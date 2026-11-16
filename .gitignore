@@ -1,0 +1,22 @@
+# 依赖（云端构建时由 npm install 重新生成）
+node_modules/
+
+# 构建产物（GitHub Actions 会从源码重新构建，无需提交）
+dist/
+dist*/
+build/
+ios/App/
+ios/Pods/
+ios/Podfile.lock
+*.xcworkspace/
+DerivedData/
+
+# 本地环境 / 日志
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+
+# WorkBuddy 项目数据
+.workbuddy/
