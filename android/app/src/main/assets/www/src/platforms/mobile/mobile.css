@@ -1,0 +1,264 @@
+/* ==================================================================
+   移动触控端专属布局（iOS / 安卓）
+   还原参考图：状态栏、顶部胶囊搜索、横滑频道、大焦点轮播、三列海报、底部 4 Tab。
+   说明：宽屏下出现的「手机外框」仅为桌面验收时的预览容器，
+        不是通过缩放桌面界面实现；移动端 DOM 与交互完全独立。
+   ================================================================== */
+:root { --fs-base: 14px; }
+
+.mob {
+  display: flex; flex-direction: column;
+  width: 100%; height: 100dvh; min-height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-0);
+  position: relative;
+}
+
+/* 状态栏：只标注运行端与输入方式，不模拟虚构时间/电量 */
+.mob__statusbar {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 16px 4px;
+  font-size: 10px; letter-spacing: .8px; color: var(--text-3);
+}
+
+/* 顶栏：小 logo + 半透明搜索胶囊 */
+.mob__top {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 12px;
+}
+.mob__logo { display: flex; align-items: center; gap: 6px; flex: none; }
+.mob__logo-mark {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: var(--brand-grad);
+  box-shadow: 0 3px 12px rgba(160, 90, 255, .45);
+  position: relative;
+}
+.mob__logo-mark::after {
+  content: ""; position: absolute; inset: 7px 6px;
+  border-left: 4px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.mob__logo-text { font-size: 13px; font-weight: 800; color: #e7dcff; }
+.mob__search { flex: 1; height: 38px; padding: 0 14px; gap: 8px; }
+.mob__search input { font-size: 13px; }
+.mob__search .search-pill__icon { color: var(--text-2); }
+
+.mob__bar-wrap { flex: none; padding: 0 14px 8px; }
+.mob__bar-wrap .ds-bar { padding: 7px 10px; font-size: 10.5px; border-radius: 10px; }
+.mob__bar-wrap .ds-bar__count { font-size: 10px; padding: 2px 7px; }
+
+/* 横向频道：触摸横滑 + 吸附 */
+.mob__channels {
+  flex: none;
+  display: flex; align-items: center; gap: 22px;
+  padding: 6px 16px 14px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .05);
+}
+.mob__channels::-webkit-scrollbar { display: none; }
+.mob__channels .channel-chip { font-size: 16px; scroll-snap-align: center; }
+.mob__channels .channel-chip.is-active { font-size: 18px; }
+
+/* 滚动主区 */
+.mob__scroll {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: 12px;
+}
+
+/* 大焦点轮播（还原参考图顶部大幅推荐位） */
+.mob__hero { position: relative; margin: 12px 14px 4px; }
+.mob__hero .hero-slot { height: 218px; }
+.mob__hero .hero-slot__inner { padding: 18px; }
+.mob__hero .hero-slot__title { font-size: 20px; }
+.mob__hero .hero-slot__desc { font-size: 11px; }
+.mob__hero-dots { position: absolute; right: 14px; bottom: 12px; }
+
+/* 分区 + 三列海报网格 */
+.mob__section { padding: 16px 14px 4px; display: grid; gap: 12px; }
+.mob__section .section-head__title { font-size: 16px; }
+.mob__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
+.mob__grid .poster { border-radius: 8px; }
+.mob__grid .poster__badge { font-size: 9px; padding: 2px 6px; }
+.mob__grid .poster-card__title { font-size: 12px; margin-top: 6px; }
+.mob__grid .poster-card__sub { font-size: 10px; }
+.mob__grid .pending-tag { font-size: 9px; padding: 4px 7px; }
+.mob__hint .empty-state { padding: 16px 8px; }
+.empty-state--compact { padding: 14px 8px !important; font-size: 11px; }
+.empty-state--compact .empty-state__icon { width: 32px; height: 32px; }
+.mob__cap-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.mob__cap-list span {
+  font-size: 11px; padding: 5px 10px; border-radius: var(--r-pill);
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: #ddd3ff;
+}
+.mob__section .pending-panel li { grid-template-columns: 1fr; gap: 3px; }
+.mob__section .pending-panel section { padding: 12px; }
+
+/* 底部 Tab：4 项（已移除「独家大瓜」，「游戏中心」→「榜单」） */
+.mob__tabbar {
+  flex: none;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  padding: 8px 6px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  background: rgba(10, 13, 22, .94);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+}
+.mob__tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: 4px 0; min-height: 48px;
+  color: var(--text-3); font-size: 10.5px;
+  transition: color .16s;
+}
+.mob__tab-icon { width: 22px; height: 22px; }
+.mob__tab.is-on { color: #ff5a63; font-weight: 700; }
+.mob__tab.is-on .mob__tab-icon { filter: drop-shadow(0 0 8px rgba(255, 90, 99, .45)); }
+
+/* 详情：移动端专属「整页 push」，区别于桌面抽屉 / TV 全屏沉浸 */
+.mob__detail {
+  position: absolute; inset: 0; z-index: 60;
+  background: linear-gradient(180deg, #131929, #090c15);
+  transform: translateY(101%);
+  transition: transform .3s cubic-bezier(.22, .8, .3, 1);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.mob__detail.is-open { transform: translateY(0); }
+.mob__detail-top {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px; font-weight: 700; color: var(--text-2);
+}
+.mob__detail-back { color: var(--text-1); padding: 4px; }
+.mob__detail-poster {
+  flex: none;
+  height: 210px; margin: 16px;
+  border-radius: var(--r-md);
+  display: grid; place-items: center;
+  position: relative;
+}
+.mob__detail-body { padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+.mob__detail-body .detail__title { font-size: 20px; }
+.mob__detail-body .detail__actions .btn-primary { flex: 1; }
+
+/* 桌面验收时的手机预览外框（不改变内部布局逻辑） */
+@media (min-width: 700px) {
+  body { display: grid; place-items: center; min-height: 100vh; }
+  #app {
+    width: 400px; height: min(860px, 94vh);
+    border-radius: 30px; overflow: hidden;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .09);
+    border: 7px solid #171c2a;
+  }
+  .mob { height: 100%; min-height: 100%; }
+  .platform-switch { bottom: 20px; right: 20px; }
+}
+
+/* 截图改版：真实 Hero、统计条、设置入口 */
+.mob__hero .hero-real { height: 218px; }
+.mob__hero .hero-real__info { padding: 16px; gap: 8px; }
+.mob__hero .hero-real__title { font-size: 19px; }
+.mob__hero .hero-real__actions .btn-primary,
+.mob__hero .hero-real__actions .btn-ghost { padding: 7px 14px; font-size: 12px; }
+.mob__settings-btn { flex: none; color: var(--text-2); padding: 6px; }
+.mob__bar-wrap .stats-bar { padding: 7px 10px; font-size: 10.5px; gap: 8px; border-radius: 10px; }
+.mob__bar-wrap .stats-bar__tip { display: none; }
+.mob__section .mine-grid { gap: 12px; }
+
+/* 移动播放器：上半屏画面 + 下半屏横滑剧集，触控目标加大 */
+
+/* 本轮：横滑胶囊标签 + 我的页标签 + 播放器上下分栏（触控） */
+.mob__channels { gap: 8px; padding: 8px 16px 14px; }
+.mob__channels .channel-chip { font-size: 13px; scroll-snap-align: center; padding: 8px 15px; }
+.mob__channels .channel-chip.is-active { font-size: 13px; transform: none; }
+.mob .mine-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.mob .mine-tab { flex: none; padding: 10px 14px; }
+.mob .extra-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+/* 账户页（移动）：账号/关于上下排列，会员积分大数字缩小，标签横滑 */
+.mob .mine-account__top { grid-template-columns: 1fr; }
+.mob .mine-tabs { display: flex; }
+.mob .mine-card--member { padding: 16px 16px 18px; }
+.mob .member-num b { font-size: 42px; letter-spacing: -1px; }
+.mob .member-hero { gap: 12px; margin: 14px 0; }
+.mob .member-side span { font-size: 17px; }
+.mob .member-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* 筛选页（移动）：标签横滑、榜单紧凑 */
+.mob .filter-row { gap: 8px; padding: 10px 0; }
+.mob .filter-row__label { width: 40px; font-size: 11.5px; }
+.mob .filter-row__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.mob .filter-row__chips::-webkit-scrollbar { display: none; }
+.mob .filter-opt { padding: 7px 13px; font-size: 12px; }
+.mob .rank-item { gap: 10px; padding: 7px 6px; }
+.mob .rank-no { width: 26px; font-size: 17px; }
+.mob .rank-poster { width: 44px; }
+.mob .rank-meta b { font-size: 13px; }
+
+/* 移动：筛选行横滑；播放器侧栏紧凑、隐藏播放信息、选集横滑 */
+.mob .filter-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.mob .filter-row::-webkit-scrollbar { display: none; }
+.mob .filter-opt { flex: none; }
+
+/* 移动播放器：上画面 + 下面板（触控：横滑线路、4 列选集、分页固定底部） */
+.ais-player[data-platform="mobile"] { grid-template-columns: 1fr; grid-template-rows: min(46vh, 56vw) minmax(0, 1fr); }
+.ais-player[data-platform="mobile"] .ais-player__side { border-left: 0; border-top: 1px solid rgba(255,255,255,.08); }
+.ais-player[data-platform="mobile"] .ais-player__tab { padding: 11px 6px; font-size: 12.5px; }
+.ais-player[data-platform="mobile"] .ais-player__linebar { padding: 8px 10px; }
+.ais-player[data-platform="mobile"] .ais-player__epwrap { padding: 10px; }
+.ais-player[data-platform="mobile"] .ais-player__eps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ais-player[data-platform="mobile"] .ais-player__ep { padding: 11px 2px; font-size: 12px; }
+.ais-player[data-platform="mobile"] .ais-player__tbar { bottom: 52px; flex-wrap: wrap; opacity: 1; padding: 6px 10px; gap: 6px; }
+.ais-player[data-platform="mobile"] .ais-player__icon { padding: 8px 10px; font-size: 11px; }
+.ais-player[data-platform="mobile"] .ais-player__dm-input { max-width: none; }
+
+/* ===== 分类切换即时反馈：细进度条 + 骨架（不再整块压暗导致「卡住」错觉） ===== */
+.load-strip { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px;
+  border-radius: 10px; background: rgba(124,92,255,.08); border: 1px solid rgba(124,92,255,.2);
+  font-size: 11.5px; color: var(--text-2); position: relative; overflow: hidden; }
+.load-strip__spinner { width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid rgba(255,255,255,.18); border-top-color: var(--accent); animation: ais-spin .8s linear infinite; }
+@keyframes ais-spin { to { transform: rotate(360deg); } }
+.load-strip__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.load-strip__bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,.06); }
+.load-strip__bar i { display: block; height: 100%; width: 38%; border-radius: 2px;
+  background: linear-gradient(90deg, #7c5cff, #c084fc); animation: ais-slide 1.3s ease-in-out infinite; }
+@keyframes ais-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+
+.poster-card.is-skeleton { pointer-events: none; }
+.poster-card.is-skeleton .poster { aspect-ratio: 2 / 3; border-radius: 10px; }
+.skeleton-line { height: 12px; margin-top: 8px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.skeleton-shine { position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: ais-shimmer 1.4s infinite; }
+@keyframes ais-shimmer { 100% { transform: translateX(100%); } }
+.poster.is-skeleton, .poster-card.is-skeleton .poster { position: relative; overflow: hidden; background: rgba(255,255,255,.05); }
+.poster-card.is-skeleton .poster::after, .skeleton-line::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); animation: ais-shimmer 1.4s infinite; }
+
+.mob .load-strip { margin: 0 0 10px; padding: 7px 10px; font-size: 10.5px; }
+
+/* 移动筛选：标签收窄，选项横滑 */
+.mob .filter-row { grid-template-columns: 34px minmax(0, 1fr); gap: 6px; }
+.mob .filter-row__label { padding-top: 8px; font-size: 11px; }
+.mob .filter-row__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.mob .filter-row__chips::-webkit-scrollbar { display: none; }
+
+/* 移动播放器修正：1fr 允许收缩，避免选集网格横向溢出；功能条单行；错误框上移 */
+.ais-player[data-platform="mobile"] { grid-template-columns: minmax(0, 1fr); }
+.ais-player[data-platform="mobile"] .ais-player__side { min-width: 0; }
+.ais-player[data-platform="mobile"] .ais-player__eps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ais-player[data-platform="mobile"] .ais-player__ep { min-width: 0; }
+.ais-player[data-platform="mobile"] .ais-player__tbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.ais-player[data-platform="mobile"] .ais-player__tbar::-webkit-scrollbar { display: none; }
+.ais-player[data-platform="mobile"] [data-pact="external"],
+.ais-player[data-platform="mobile"] [data-pact="copy"] { display: none; }
+.ais-player[data-platform="mobile"] .ais-player__error,
+.ais-player[data-platform="mobile"] .ais-player__loading { top: 32%; max-width: 92%; }
+.ais-player[data-platform="mobile"] .ais-player__linebar { flex-wrap: wrap; }
+.ais-player[data-platform="mobile"] .ais-player__empty { white-space: nowrap; }
