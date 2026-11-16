@@ -1,0 +1,31 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.aistream.pending.mobile'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.aistream.pending.mobile'
+        minSdk 23
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release { minifyEnabled false }
+    }
+
+    // assets/www 由 npm run sync:assets 生成，包含四端统一 Web 内核
+    sourceSets {
+        main { assets.srcDirs = ['src/main/assets'] }
+    }
+}
+
+// 零第三方依赖：原生壳只用系统 WebView + 内置本地静态服务
+dependencies { }
