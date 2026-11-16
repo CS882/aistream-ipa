@@ -89,7 +89,8 @@ export function matchesCountry(area, country) {
 /** 前端筛选 + 排序（不改动 state.items 原数组） */
 export function applyFilter(items, filter = {}) {
   let list = Array.isArray(items) ? items.slice() : [];
-  if (filter.country) list = list.filter((x) => matchesCountry(x?.area, filter.country));
+  // 内容源不提供 area 时忽略国家条件，避免把全部内容误筛成 0 条
+  if (filter.country && hasArea(list)) list = list.filter((x) => matchesCountry(x?.area, filter.country));
   if (filter.year) {
     const g = YEAR_GROUPS.find((x) => x.id === filter.year);
     if (g) list = list.filter((x) => g.test(Number(x?.year) || 0));
@@ -106,6 +107,11 @@ export function applyFilter(items, filter = {}) {
 
 export function hasFilter(filter = {}) {
   return !!(filter.country || filter.year || (filter.sort && filter.sort !== 'default'));
+}
+
+/** 当前数据是否含可用的地区字段（内容源实测不提供，据此禁用国家筛选） */
+export function hasArea(items) {
+  return (Array.isArray(items) ? items : []).some((x) => !!(x && x.area && String(x.area).trim()));
 }
 
 /** 当前数据里真实出现的地区 / 年份（保留给外部调用） */
@@ -133,9 +139,15 @@ export function filterRows(state, platform = 'desktop') {
     chip(state.channel === 'rec', 'data-channel="rec"', '全部')
     + typeItems.filter((c) => c.id !== 'rec').map((c) => chip(c.id === state.channel, `data-channel="${c.id}"`, c.label)).join('')
   );
+  // 实测内容源（catalog / home / search / official-vod）均不返回 area 字段，
+  // 按国家筛选必然 0 条。置灰并说明原因，避免用户点了没反应误以为 BUG。
+  const countryUnavailable = hasArea(state.items);
   const countryRow = row('国家',
-    chip(!f.country, 'data-filter="country" data-value=""', '全部')
-    + COUNTRIES.map((c) => chip(f.country === c, `data-filter="country" data-value="${e(c)}"`, c)).join('')
+    chip(!f.country, 'data-filter="country" data-value=""', '全部',
+      { disabled: !countryUnavailable, hint: !countryUnavailable ? '内容源未提供地区字段' : '' })
+    + (countryUnavailable
+        ? COUNTRIES.map((c) => chip(f.country === c, `data-filter="country" data-value="${e(c)}"`, c)).join('')
+        : '<span class="filter-unavailable">内容源未提供地区字段，暂不可按国家筛选</span>')
   );
   const yearRow = row('年份',
     chip(!f.year, 'data-filter="year" data-value=""', '全部')
@@ -150,6 +162,6 @@ export function filterRows(state, platform = 'desktop') {
     + `<div class="filter-actions">
         ${hasFilter(f) ? '<button class="btn-ghost btn-mini" data-action="reset-filter">重置筛选</button>' : ''}
         ${state.page < 4 ? `<button class="btn-ghost btn-mini" data-action="expand-list" ${state.loadingMore ? 'disabled' : ''}>${state.loadingMore ? '加载中…' : '加载更多（扩大筛选范围）'}</button>` : ''}
-        <span class="filter-note">已加载 ${total} 条 · 国家/年份按内容源真实 area/year 标准化匹配；热度字段站点未提供</span>
+        <span class="filter-note">已加载 ${total} 条 · 年份/排序可用；国家与热度因内容源未提供对应字段暂不可用</span>
       </div>`;
 }
