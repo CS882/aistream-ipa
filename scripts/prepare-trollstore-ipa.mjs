@@ -19,7 +19,7 @@ const write = (p, s) => fs.writeFileSync(path.join(ROOT, p), s);
 
 const BUNDLE = (process.env.IOS_BUNDLE_ID || 'com.aistream.player').trim();
 const TEAM = (process.env.IOS_TEAM_ID || 'AAAAAAAAAA').trim();
-const GATEWAY = (process.env.GATEWAY_URL || 'http://fnos.jiulingkeji.asia:8891').trim();
+const GATEWAY = (process.env.GATEWAY_URL || 'http://fnos.jiulingkeji.asia:8890').trim();
 
 if (!/^[a-z0-9.]*$/i.test(BUNDLE) || !BUNDLE.includes('.')) {
   console.error('IOS_BUNDLE_ID 非法：需形如 com.example.app'); process.exit(1);
