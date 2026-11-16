@@ -9,7 +9,7 @@
 #   3) 运行结束后在本次运行的 Artifacts 下载 AIStream-TrollStore-IPA
 #
 # 可选参数（Run workflow 时可填）：
-#   gateway     内置网关地址，默认 http://fnos.jiulingkeji.asia:8891
+#   gateway     内置网关地址，默认 http://fnos.jiulingkeji.asia:8890
 #   bundle_id   App 包名，默认 com.aistream.player
 # ------------------------------------------------------------------
 name: Build TrollStore IPA
@@ -20,7 +20,7 @@ on:
       gateway:
         description: '内置内容源网关（需公网可达且带 CORS 的代理地址）'
         required: false
-        default: 'http://fnos.jiulingkeji.asia:8891'
+        default: 'http://fnos.jiulingkeji.asia:8890'
       bundle_id:
         description: 'App Bundle ID（巨魔无需注册，唯一即可）'
         required: false
@@ -46,7 +46,7 @@ jobs:
 
       - name: 注入构建参数（网关 / Bundle ID）
         env:
-          GATEWAY_URL: ${{ github.event.inputs.gateway || 'http://fnos.jiulingkeji.asia:8891' }}
+          GATEWAY_URL: ${{ github.event.inputs.gateway || 'http://fnos.jiulingkeji.asia:8890' }}
           IOS_BUNDLE_ID: ${{ github.event.inputs.bundle_id || 'com.aistream.player' }}
           IOS_TEAM_ID: 'AAAAAAAAAA'
         run: node scripts/prepare-trollstore-ipa.mjs
