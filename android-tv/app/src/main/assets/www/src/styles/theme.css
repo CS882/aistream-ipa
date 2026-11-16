@@ -1,0 +1,284 @@
+/* ==================================================================
+   AIStream 影视 · 全局视觉主题
+   还原参考图的「影视」UI 样式：深色底、紫粉渐变品牌字、蓝色「高清」角标、
+   半透明搜索胶囊、轮播红点、分区标题 + 右箭头、2:3 海报网格。
+   ================================================================== */
+:root {
+  /* 底色层次 */
+  --bg-0: #080a12;
+  --bg-1: #0d111c;
+  --bg-2: #131929;
+  --bg-3: #1b2234;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.085);
+  --surface-3: rgba(255, 255, 255, 0.13);
+  --line: rgba(255, 255, 255, 0.09);
+
+  /* 文字 */
+  --text-1: #f4f6fd;
+  --text-2: #a9b1c9;
+  --text-3: #6e7893;
+
+  /* 品牌 / 强调 */
+  --brand-a: #7c6cff;
+  --brand-b: #b45cff;
+  --brand-c: #f060c0;
+  --brand-grad: linear-gradient(100deg, #8f7bff 0%, #b45cff 48%, #f060c0 100%);
+  --accent: #8b6cff;
+  --accent-soft: rgba(139, 108, 255, 0.18);
+  --accent-line: rgba(139, 108, 255, 0.55);
+
+  /* 参考图「高清」角标 */
+  --badge-a: #2f7bff;
+  --badge-b: #59a9ff;
+  --badge-grad: linear-gradient(135deg, var(--badge-a), var(--badge-b));
+
+  /* 轮播指示点 */
+  --dot: rgba(255, 255, 255, 0.32);
+  --dot-active: #ff4d55;
+
+  /* TV 焦点 */
+  --focus: #ffd36e;
+  --focus-glow: rgba(255, 211, 110, 0.42);
+
+  /* 圆角 / 阴影 / 字号基准 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --shadow-1: 0 6px 22px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --fs-base: 14px;
+  --gap: 12px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-image:
+    radial-gradient(1100px 620px at 18% -12%, rgba(124, 108, 255, 0.16), transparent 62%),
+    radial-gradient(900px 520px at 92% 4%, rgba(240, 96, 192, 0.10), transparent 60%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  background-attachment: fixed;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input { font: inherit; }
+a { color: inherit; text-decoration: none; }
+svg { display: block; }
+
+::selection { background: var(--accent-soft); color: #fff; }
+
+/* ---------- 品牌字（还原截图：AIStream 白紫 + 影视 紫粉渐变） ---------- */
+.brand { display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.brand__name {
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  background: linear-gradient(96deg, #ffffff 0%, #d6ccff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand__suffix {
+  font-weight: 800;
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand__role {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--text-3);
+  margin-top: 3px;
+}
+.brand--sm .brand__name { font-size: 18px; }
+.brand--sm .brand__suffix { font-size: 18px; }
+.brand--lg .brand__name { font-size: 26px; }
+.brand--lg .brand__suffix { font-size: 26px; }
+
+/* ---------- 搜索胶囊（还原截图顶部半透明搜索框） ---------- */
+.search-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
+  background: rgba(12, 16, 26, 0.62);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  color: var(--text-2);
+  transition: border-color .18s, box-shadow .18s;
+}
+.search-pill:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.search-pill input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 14px;
+}
+.search-pill input::placeholder { color: var(--text-3); }
+.search-pill__icon { color: var(--text-2); flex: none; }
+.search-pill__clear {
+  color: var(--text-3);
+  padding: 4px;
+  border-radius: 50%;
+  display: none;
+}
+.search-pill__clear.is-on { display: block; }
+
+/* ---------- 二级频道标签 ---------- */
+.channel-chip {
+  white-space: nowrap;
+  color: var(--text-2);
+  font-weight: 600;
+  position: relative;
+  transition: color .16s;
+}
+.channel-chip.is-active { color: var(--text-1); font-weight: 800; }
+.channel-chip.is-active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -8px;
+  width: 22px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand-grad);
+}
+
+/* ---------- 分区标题（还原「热播…」+ 右侧箭头） ---------- */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-head__title {
+  font-weight: 800;
+  color: var(--text-1);
+  letter-spacing: .2px;
+}
+.section-head__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.section-head__more svg { width: 16px; height: 16px; }
+
+/* ---------- 海报卡片（原子样式，三端各自覆盖尺寸/间距） ---------- */
+.poster-card { position: relative; min-width: 0; text-align: left; display: block; }
+.poster {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: linear-gradient(150deg, #1a2133 0%, #101625 55%, #1a1830 100%);
+  border: 1px solid var(--line);
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.poster__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.poster__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--badge-grad);
+  border-bottom-left-radius: 8px;
+  letter-spacing: .5px;
+}
+.poster__foot {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 22px 8px 7px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .78));
+  font-size: 11px;
+  color: #fff;
+}
+.poster__score { font-weight: 800; color: #ffd36e; }
+.poster-card__title {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.poster-card__sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 主按钮 ---------- */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: var(--r-pill);
+  font-weight: 800;
+  color: #fff;
+  background: var(--brand-grad);
+  box-shadow: 0 8px 24px rgba(140, 90, 255, .32);
+}
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--r-pill);
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+/* ---------- 轮播指示点 ---------- */
+.dots { display: inline-flex; align-items: center; gap: 6px; }
+.dots i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--dot); display: block;
+}
+.dots i.is-on { width: 8px; height: 8px; background: var(--dot-active); }
