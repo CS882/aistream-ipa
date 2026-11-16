@@ -1,0 +1,18 @@
+{
+  "appId": "",
+  "appName": "AIStream 影视",
+  "webDir": "web",
+  "bundledWebRuntime": false,
+  "__pendingFields": [
+    "appId：iOS Bundle ID / 安卓包名，需求方本次未提供，见 docs/00-待补充项清单.md（发布分组）",
+    "iOS 签名：Apple Developer Team ID、证书、Provisioning Profile，见 docs/05-原生安装包构建说明.md"
+  ],
+  "ios": {
+    "contentInset": "always",
+    "__note": "iOS 工程在 macOS 上由 npx cap add ios 生成；Windows 无法产出 .ipa"
+  },
+  "android": {
+    "__note": "安卓手机 / TV 的 .apk 由 scripts/build-apk.py 直接构建，也可在 Android Studio 打开 android/ 与 android-tv/"
+  },
+  "__note": "web/ 由 npm run sync:assets 同步生成，仅含四端静态资源；appId 为空是待补充项，iOS 打包前必须填写。"
+}
