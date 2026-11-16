@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>AIStream 影视 · 四端入口</title>
+<meta name="theme-color" content="#0b0d14" />
+<link rel="manifest" href="./public/manifest.json" />
+<link rel="icon" href="./public/icon.svg" type="image/svg+xml" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 48px 24px;
+    background: radial-gradient(900px 560px at 18% -10%, rgba(124,108,255,.20), transparent 62%),
+                radial-gradient(800px 480px at 90% 6%, rgba(240,96,192,.12), transparent 60%),
+                linear-gradient(180deg,#0d111c,#070910);
+    color: #f4f6fd;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  .brand { display: inline-flex; align-items: baseline; gap: 10px; }
+  .brand b { font-size: 40px; font-weight: 800; letter-spacing: -1px;
+    background: linear-gradient(96deg,#fff,#d6ccff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brand i { font-style: normal; font-size: 40px; font-weight: 800;
+    background: linear-gradient(100deg,#8f7bff,#b45cff 48%,#f060c0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .role { margin: 6px 0 0 2px; font-size: 11px; letter-spacing: 5px; color: #6e7893; font-weight: 700; }
+  .lead { margin: 22px 0 30px; color: #a9b1c9; line-height: 1.8; max-width: 760px; font-size: 14px; }
+  .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 28px;
+    border-radius: 12px; background: rgba(139,108,255,.10); border: 1px solid rgba(139,108,255,.30);
+    color: #a9b1c9; font-size: 13px; line-height: 1.6; }
+  .bar code { font-family: ui-monospace, Consolas, monospace; color: #cfc4ff;
+    background: rgba(139,108,255,.16); padding: 2px 8px; border-radius: 5px; }
+  .bar strong { color: #f4f6fd; }
+  .bar span:last-child { margin-left: auto; white-space: nowrap; color: #ffd36e; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px,1fr)); gap: 16px; }
+  .card { display: block; padding: 22px; border-radius: 16px; text-decoration: none;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
+    transition: transform .18s, border-color .18s, background .18s; }
+  .card:hover { transform: translateY(-4px); border-color: rgba(139,108,255,.55); background: rgba(139,108,255,.10); }
+  .card .k { font-size: 10px; letter-spacing: 2px; color: #8b6cff; font-weight: 800; }
+  .card h2 { margin: 12px 0 8px; font-size: 20px; }
+  .card p { margin: 0; color: #a9b1c9; font-size: 12.5px; line-height: 1.7; }
+  .card .t { margin-top: 16px; display: inline-block; font-size: 11px; color: #6e7893; font-family: ui-monospace, Consolas, monospace; }
+  .note { margin-top: 30px; padding: 18px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,.09);
+    background: rgba(255,255,255,.025); color: #a9b1c9; font-size: 12.5px; line-height: 1.9; }
+  .note b { color: #f4f6fd; }
+  .note code { font-family: ui-monospace, Consolas, monospace; color: #cfc4ff; }
+  footer { margin-top: 28px; color: #6e7893; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><b>AIStream</b><i>影视</i></div>
+  <div class="role">ADMIN</div>
+  <p class="lead">四端统一业务内核，按输入方式分别设计的独立界面：桌面键鼠、iOS / 安卓触控、TV 大屏遥控。核心功能严格一致 —— 影视内容浏览、搜索、详情查看、播放入口。</p>
+
+  <div class="bar" id="ds-bar">
+    <span>唯一已提供的内容源：<strong><code id="ds-host">fnos.jiulingkeji.asia:8890</code></strong> · 协议、接口与字段均按实测接入，界面不填充任何示例数据</span>
+    <span id="ds-count">待补充项统计中…</span>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="./desktop.html?platform=desktop">
+      <div class="k">DESKTOP</div><h2>电脑桌面端</h2>
+      <p>左侧固定导航、顶栏搜索、多列自适应网格、鼠标悬浮操作、右侧详情抽屉、键盘快捷键。</p>
+      <span class="t">desktop.html · 键盘 + 鼠标</span>
+    </a>
+    <a class="card" href="./mobile.html?platform=mobile">
+      <div class="k">MOBILE</div><h2>iOS / 安卓移动端</h2>
+      <p>顶部胶囊搜索、横滑频道、大幅焦点轮播、三列海报、底部 4 Tab、整页上滑详情、安全区适配。</p>
+      <span class="t">mobile.html · 触摸</span>
+    </a>
+    <a class="card" href="./tv.html?platform=tv">
+      <div class="k">TV</div><h2>TV 大屏端</h2>
+      <p>10-foot UI、overscan 安全区、遥控器空间焦点导航、横向货架 Rows、全屏沉浸详情、BACK 返回。</p>
+      <span class="t">tv.html · 遥控器</span>
+    </a>
+  </div>
+
+  <div class="note">
+    <b>关于数据源：</b>本项目仅使用需求方提供的 <code>fnos.jiulingkeji.asia:8890</code>，协议、接口、鉴权与字段均已按实测接入（见
+    <code>docs/06-影视网站对接实测报告.md</code>）；栏目按影视类型区分，播放为四端共用内置播放器。剩余发布类信息集中登记于
+    <code>docs/00-待补充项清单.md</code>。<br />
+    <b>导航改造：</b>已移除「独家大瓜」，「游戏中心」已替换为「榜单」，四端共用同一份导航配置。<br />
+    <b>验收提示：</b>任意端右下角可切换 DESKTOP / MOBILE / TV 预览；也可在 URL 后加 <code>?platform=tv</code> 强制进入指定端。
+  </div>
+  <footer>AIStream 影视 · 四端统一交付 · 按影视类型浏览 · 内置播放器 · 登录后显示真实内容</footer>
+</div>
+
+<script type="module">
+  import { statusSummary } from './src/core/datasource.js';
+  import { detectPlatform } from './src/core/platform.js';
+  const s = statusSummary();
+  document.getElementById('ds-host').textContent = s.host;
+  document.getElementById('ds-count').textContent = s.configured
+    ? `内容源已对接 · ${s.count} 项待补充` : '内容源探测中…';
+
+  // 智能分发：复用 platform.js 的唯一一份平台探测逻辑，避免两套 UA 正则不一致。
+  const forced = new URLSearchParams(location.search).get('platform');
+  if (forced && ['desktop', 'mobile', 'tv'].includes(forced)) {
+    location.replace(forced + '.html?platform=' + forced);
+  } else {
+    const p = detectPlatform(location.search);
+    if (p === 'tv') location.replace('tv.html');
+    else if (p === 'mobile') location.replace('mobile.html');
+    // 桌面端停留在本启动台，可手动选择四端入口
+  }
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+  }
+</script>
+</body>
+</html>
