@@ -3,7 +3,7 @@
 # AIStream 影视 · Mac 本地一键构建巨魔 IPA
 # ------------------------------------------------------------------
 # 在有 Xcode 的 Mac 上跑这一条命令即可产出巨魔可装的 IPA：
-#   GATEWAY_URL=http://fnos.jiulingkeji.asia:8891 bash ios/build-trollstore-ipa.sh
+#   GATEWAY_URL=http://fnos.jiulingkeji.asia:8890 bash ios/build-trollstore-ipa.sh
 #
 # 特点：不需要 Apple 开发者账号 / 证书 / 描述文件；用 ldid 伪签名。
 # 产出：dist/ipa/AIStream-TrollStore.ipa
@@ -38,7 +38,13 @@ echo "==> 3/6 同步四端 Web 资源"
 npm run sync:assets
 
 echo "==> 4/6 生成 / 同步 Xcode 工程 + ATS 配置"
-npx cap add ios --force
+# ios/ 目录已存在（存放构建脚本）；cap add 见到 ios/ 会拒绝，先暂存脚本再重建
+SCRIPT_TMP="$(mktemp -d)"
+cp ios/*.sh ios/*.plist "$SCRIPT_TMP/" 2>/dev/null || true
+rm -rf ios
+npx cap add ios
+cp "$SCRIPT_TMP/"*.sh "$SCRIPT_TMP/"*.plist ios/ 2>/dev/null || true
+rm -rf "$SCRIPT_TMP"
 npx cap sync ios
 PLIST="ios/App/App/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
