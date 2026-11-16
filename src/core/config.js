@@ -48,8 +48,8 @@ export const REMOVED_NAV = Object.freeze([
  * ------------------------------------------------------------------
  * id / kind 全部来自需求方站点 app.js 的实测定义：
  *   KINDNAME = { movie:'电影', series:'剧集', anime:'动漫',
- *                variety:'综艺', short:'短剧', doc:'纪录片' }
- *   侧栏分类：rec / movie / series / anime / variety / short / vod / doc
+ *                variety:'综艺', doc:'纪录片' }
+ *   侧栏分类：rec / movie / series / anime / variety / doc / vod / iptv
  *   直播分组：iptv / sportslive
  *   按类型取内容的真实接口：api/up/catalog?kind=<kind>&limit=&page=
  * 显示名按需求方要求（「电视剧」而非站点内部「剧集」）。
@@ -61,7 +61,6 @@ export const CHANNELS = Object.freeze([
   { id: 'series', label: '电视剧', group: '影视', source: 'catalog', kind: 'series' },
   { id: 'anime', label: '动漫', group: '影视', source: 'catalog', kind: 'anime' },
   { id: 'variety', label: '综艺', group: '影视', source: 'catalog', kind: 'variety' },
-  { id: 'short', label: '短剧', group: '影视', source: 'catalog', kind: 'short' },
   { id: 'doc', label: '纪录片', group: '影视', source: 'catalog', kind: 'doc' },
   { id: 'vod', label: '点播', group: '影视', source: 'official-vod' },
   { id: 'iptv', label: 'IPTV', group: '直播', source: 'iptv' },
