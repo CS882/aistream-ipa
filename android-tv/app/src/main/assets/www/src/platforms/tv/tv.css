@@ -1,0 +1,330 @@
+/* ==================================================================
+   TV 大屏端专属布局（遥控器 / 10-foot UI）
+   与桌面、移动完全不同的信息架构：左侧大焦点导航 + 横向货架 Rows。
+   无 hover、无滚动条；一切交互围绕「焦点」展开。
+   ================================================================== */
+:root { --fs-base: 20px; }
+
+.tv {
+  height: 100dvh;
+  padding: 3.2vh 3.6vw;              /* overscan 安全区，避免电视边缘裁切 */
+  overflow: hidden;
+  background:
+    radial-gradient(1400px 800px at 20% -10%, rgba(124, 108, 255, .18), transparent 60%),
+    radial-gradient(1200px 700px at 92% 8%, rgba(240, 96, 192, .12), transparent 58%),
+    linear-gradient(180deg, #0c101c, #060810);
+}
+.tv__stage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+/* ---------- 顶部 ---------- */
+.tv__top { display: flex; align-items: center; gap: 20px; flex: none; padding-bottom: 1.6vh; }
+.tv__role { margin: 0; }
+.tv__search-entry {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 12px 26px; border-radius: var(--r-pill);
+  background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--text-2); font-size: 19px; font-weight: 700;
+}
+.tv__search-entry kbd {
+  font-family: var(--font); font-size: 14px; color: var(--text-3);
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+}
+.tv__bar { flex: none; margin-bottom: 1.6vh; }
+.tv__bar .ds-bar { font-size: 16px; padding: 10px 20px; }
+.tv__bar .ds-bar__count { font-size: 15px; }
+
+/* ---------- 频道大标签（顶部横排，遥控器左右切换） ---------- */
+.tv__channels {
+  flex: none;
+  display: flex; gap: 16px;
+  padding: 0 0 1.8vh;
+  overflow: hidden;
+}
+.tv__channel {
+  padding: 10px 28px; border-radius: var(--r-pill);
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--text-2); font-size: 20px; font-weight: 700; white-space: nowrap;
+}
+.tv__channel.is-on { background: var(--brand-grad); color: #fff; border-color: transparent; }
+
+/* ---------- 主体：左侧导航 + 右侧货架 ---------- */
+.tv__body { flex: 1; min-height: 0; display: grid; grid-template-columns: 210px 1fr; gap: 2.4vw; }
+.tv__nav { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.tv__nav-item {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 18px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--text-2); font-size: 21px; font-weight: 700;
+  text-align: left;
+}
+.tv__nav-item.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: #fff; }
+.tv__nav-icon { width: 30px; height: 30px; flex: none; }
+
+.tv__rows {
+  min-height: 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none;
+  display: flex; flex-direction: column; gap: 2.4vh;
+  padding: 4px 8px 12px 4px;
+}
+.tv__rows::-webkit-scrollbar { display: none; }
+.tv__row { flex: none; }
+.tv__row-title { margin: 0 0 14px; font-size: 24px; font-weight: 800; color: var(--text-1); }
+.tv__track {
+  display: flex; gap: 20px;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 10px 4px 22px;
+}
+.tv__track::-webkit-scrollbar { display: none; }
+.tv__track > * { flex: none; }
+
+/* TV 海报卡：比桌面/移动更大、更醒目 */
+.tv__track .poster-card { width: 218px; }
+.tv__track .poster { border-radius: 14px; border: 2px solid transparent; }
+.tv__track .poster-card__title { font-size: 19px; margin-top: 10px; }
+.tv__track .poster-card__sub { font-size: 15px; }
+.tv__track .poster__badge { font-size: 14px; padding: 5px 12px; }
+.tv__track .pending-tag { font-size: 14px; padding: 7px 14px; }
+
+/* 第一行「横向大焦点卡」，与后两行 2:3 海报形成货架层次 */
+.tv__hero-card { width: 390px; position: relative; }
+.tv__hero-art {
+  width: 100%; aspect-ratio: 16 / 9; border-radius: 16px;
+  border: 2px solid transparent;
+  display: grid; place-items: center; position: relative;
+}
+.tv__hero-label { margin-top: 10px; font-size: 19px; font-weight: 700; color: var(--text-2); }
+
+.tv__filter-chip {
+  min-width: 180px; padding: 18px 30px; border-radius: 14px;
+  background: var(--surface); border: 2px solid var(--line);
+  color: var(--text-2); font-size: 21px; font-weight: 700; text-align: center;
+}
+.tv__filter-chip.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: #fff; }
+.tv__row-note { color: var(--text-3); font-size: 17px; padding: 6px 4px; }
+.tv__mine { display: grid; gap: 18px; padding: 10px 4px; }
+.tv__mine h2 { margin: 0; font-size: 30px; }
+.tv__mine-summary { color: var(--text-2); font-size: 19px; }
+.tv__mine-summary code { color: #cfc4ff; background: var(--accent-soft); padding: 4px 12px; border-radius: 8px; }
+.tv__cap-list { display: flex; gap: 12px; flex-wrap: wrap; }
+.tv__cap-list span { padding: 8px 18px; border-radius: var(--r-pill); background: var(--accent-soft); border: 1px solid var(--accent-line); color: #ddd3ff; font-size: 17px; }
+.tv__mine-note { color: var(--text-3); font-size: 17px; }
+.empty-state--tv { padding: 20px !important; font-size: 17px !important; }
+
+/* ---------- 焦点态：TV 唯一的状态反馈通道 ---------- */
+[data-focusable="1"] { outline: none; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, opacity .16s; }
+[data-focusable="1"].is-focused {
+  transform: scale(1.07);
+  border-color: var(--focus) !important;
+  box-shadow: 0 0 0 4px var(--focus-glow), 0 22px 52px rgba(0, 0, 0, .68);
+  z-index: 12;
+  position: relative;
+  color: #fff;
+}
+.tv__track .poster-card.is-focused .poster { border-color: var(--focus); }
+.tv__hero-card.is-focused .tv__hero-art { border-color: var(--focus); }
+.tv__detail .is-focused { transform: scale(1.05); }
+.tv__search-box input.is-focused { border-color: var(--focus); box-shadow: 0 0 0 4px var(--focus-glow); }
+
+/* ---------- 底部遥控器提示条 ---------- */
+.tv__hint {
+  flex: none; display: flex; align-items: center; gap: 26px;
+  padding-top: 1.4vh; border-top: 1px solid var(--line);
+  color: var(--text-3); font-size: 16px;
+}
+.tv__hint span { display: inline-flex; align-items: center; gap: 7px; }
+.tv__hint kbd {
+  font-family: var(--font); font-size: 14px; color: var(--text-2);
+  border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 7px;
+  padding: 3px 9px; background: var(--surface);
+}
+.tv__hint-right { margin-left: auto; }
+
+/* ---------- 全屏沉浸详情（TV 专属，区别于桌面抽屉 / 移动整页 push） ---------- */
+.tv__detail {
+  position: fixed; inset: 0; z-index: 80;
+  display: none;
+  background: linear-gradient(120deg, rgba(8, 10, 18, .98), rgba(14, 12, 30, .98));
+  padding: 4vh 4vw;
+  overflow: hidden;
+}
+.tv__detail.is-open { display: flex; }
+.tv__detail-bg {
+  position: absolute; inset: 0; opacity: .32;
+  filter: blur(18px);
+}
+.tv__detail-content {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: 340px 1fr; gap: 3vw;
+  align-items: center; width: 100%; max-width: 1600px; margin: auto;
+}
+.tv__detail-poster {
+  aspect-ratio: 2 / 3; border-radius: 20px;
+  display: grid; place-items: center; position: relative;
+  border: 2px solid var(--line);
+}
+.tv__detail-info .detail { gap: 20px; }
+.tv__detail-info .detail__title { font-size: 42px; }
+.tv__detail-info .detail__desc { font-size: 20px; }
+.tv__detail-info .detail__chip { font-size: 17px; padding: 7px 18px; }
+.tv__detail-info .detail__notice { font-size: 18px; }
+.tv__detail-info .btn-primary, .tv__detail-info .btn-ghost { font-size: 21px; padding: 15px 34px; }
+.tv__detail-back { position: absolute; right: 4vw; bottom: 4vh; color: var(--text-3); font-size: 17px; }
+
+/* ---------- 搜索面板 ---------- */
+.tv__search-panel {
+  position: fixed; inset: 0; z-index: 90;
+  display: none; place-items: center;
+  background: rgba(4, 6, 12, .92);
+  backdrop-filter: blur(10px);
+}
+.tv__search-panel.is-open { display: grid; }
+.tv__search-box {
+  width: min(1100px, 88vw);
+  display: grid; gap: 22px;
+  padding: 46px;
+  border-radius: 24px;
+  background: linear-gradient(150deg, #171d2e, #0d111c);
+  border: 1px solid var(--accent-line);
+  box-shadow: var(--shadow-2);
+}
+.tv__search-box h2 { margin: 0; font-size: 32px; }
+.tv__search-box input {
+  width: 100%; padding: 20px 24px; font-size: 24px;
+  border-radius: 14px; border: 2px solid var(--line);
+  background: rgba(0, 0, 0, .32); color: var(--text-1); outline: none;
+}
+.tv__search-box input::placeholder { color: var(--text-3); font-size: 19px; }
+.tv__search-actions { display: flex; gap: 16px; }
+.tv__search-actions button { font-size: 22px; padding: 16px 40px; }
+.tv__search-box p { margin: 0; color: var(--text-3); font-size: 17px; line-height: 1.6; }
+
+/* TV 上放大全局反馈元素 */
+.tv .toast { font-size: 20px; padding: 16px 32px; }
+.tv .platform-switch { right: 3.6vw; bottom: 3vh; }
+.tv .platform-switch a { font-size: 14px; padding: 8px 16px; }
+
+/* 截图改版：10-foot 设置面板 / 真实 Hero / 统计条 */
+.tv__settings-entry {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 22px; border-radius: var(--r-pill);
+  background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--text-2); font-size: 18px; font-weight: 700;
+}
+.tv .stats-bar { font-size: 16px; padding: 10px 20px; gap: 20px; }
+.tv__hero-art-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tv .stg-panel { width: min(900px, 88vw); }
+.tv .stg-head b { font-size: 24px; }
+.tv .stg-head span { font-size: 15px; }
+.tv .stg-group h3 { font-size: 19px; }
+.tv .stg-row__label b { font-size: 19px; }
+.tv .stg-row__label small { font-size: 15px; }
+.tv .stg-row__ctrl select { font-size: 18px; max-width: 340px; }
+.tv .stg-switch span { width: 62px; height: 34px; border-radius: 17px; }
+.tv .stg-switch span::after { width: 28px; height: 28px; }
+.tv .stg-switch input:checked + span::after { transform: translateX(28px); }
+.tv .stg-range input { width: 220px; }
+.tv .mine-card { padding: 20px 24px; }
+.tv .mine-card h3 { font-size: 20px; }
+.tv .mine-card--user b { font-size: 22px; }
+.tv .mine-card--about { font-size: 17px; }
+.tv .quick-entry { font-size: 18px; padding: 12px 14px; }
+.tv .stg-history span { font-size: 16px; }
+
+/* TV 播放器：10-foot 全屏画面 + 右侧大焦点控制区，遥控器方向键导航 */
+.tv .extra-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.tv .extra-card__meta b { font-size: 18px; }
+.tv .extra-card__meta small { font-size: 15px; }
+.tv .extra-card__play { font-size: 16px; padding: 8px 14px; }
+.tv .points-card__num b { font-size: 38px; }
+.tv .weekly-day b { font-size: 18px; }
+.tv .weekly-day span { font-size: 16px; }
+
+/* 本轮：10-foot 大焦点标签 + 播放器（遥控器） */
+.tv__channels { gap: 12px; }
+.tv__channel { font-size: 20px; padding: 11px 28px; transition: transform .18s ease, box-shadow .18s ease; }
+.tv__channel.is-on { box-shadow: 0 8px 28px rgba(124,92,255,.4); transform: scale(1.04); }
+.tv__channel.is-live::before { content: '●'; color: #ff5c6c; margin-right: 8px; font-size: 14px; }
+.tv .mine-tabs { gap: 12px; padding: 10px; }
+.tv .mine-tab { font-size: 18px; padding: 13px 24px; }
+.tv .mine-tab.is-on { transform: scale(1.03); }
+.tv .mine-tab svg { width: 20px; height: 20px; }
+.tv .extra-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.tv .extra-card__meta b { font-size: 18px; }
+.tv .extra-card__meta small { font-size: 15px; }
+.tv .extra-card__play { font-size: 16px; padding: 8px 14px; }
+.tv .points-card__num b { font-size: 38px; }
+.tv .weekly-day b { font-size: 18px; }
+.tv .weekly-day span { font-size: 16px; }
+
+/* 账户页（TV）：10-foot 大数字与信息块 */
+.tv .mine-card--member { padding: 24px 28px 26px; }
+.tv .member-title { font-size: 19px; }
+.tv .member-badge { font-size: 16px; padding: 7px 16px; }
+.tv .member-num b { font-size: 76px; }
+.tv .member-num span { font-size: 17px; }
+.tv .member-side b { font-size: 16px; }
+.tv .member-side span { font-size: 26px; }
+.tv .member-grid b { font-size: 15px; }
+.tv .member-grid span { font-size: 20px; }
+.tv .mine-about__head { font-size: 18px; }
+.tv .mine-about__head b { font-size: 18px; }
+.tv .mine-about__meta { font-size: 16px; }
+
+/* 筛选页（TV）：大字号筛选行 */
+.tv__row--filter { gap: 1.2vh; }
+.tv__filter-rows { display: grid; gap: 0; }
+.tv .filter-panel__head b { font-size: 24px; }
+
+/* TV：播放器侧栏 flex，选集占满剩余高度 */
+
+/* TV 播放器：10-foot 大焦点（遥控器几何导航、5 列选集、大分页按钮） */
+.ais-player[data-platform="tv"] { grid-template-columns: minmax(0, 1fr) 460px; }
+.ais-player[data-platform="tv"] .ais-player__title { font-size: 24px; }
+.ais-player[data-platform="tv"] .ais-player__icon { padding: 12px 20px; font-size: 19px; border-radius: 12px; }
+.ais-player[data-platform="tv"] .ais-player__tab { font-size: 20px; padding: 16px 8px; }
+.ais-player[data-platform="tv"] .ais-player__count { font-size: 15px; }
+.ais-player[data-platform="tv"] .ais-player__linelabel { font-size: 15px; }
+.ais-player[data-platform="tv"] .ais-player__line-chip { font-size: 16px; padding: 9px 16px; }
+.ais-player[data-platform="tv"] .ais-player__eps { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ais-player[data-platform="tv"] .ais-player__ep { font-size: 18px; padding: 14px 4px; }
+.ais-player[data-platform="tv"] .ais-player__pg { min-width: 40px; height: 38px; font-size: 17px; }
+.ais-player[data-platform="tv"] .ais-player__tbar { opacity: 1; bottom: 80px; }
+.ais-player[data-platform="tv"] .ais-player__dm-input { font-size: 18px; }
+.ais-player[data-platform="tv"] .ais-player__loading, .ais-player[data-platform="tv"] .ais-player__error { font-size: 20px; }
+.ais-player[data-platform="tv"] .ais-player__meta-title { font-size: 22px; }
+.ais-player[data-platform="tv"] .ais-player__meta-rows > div { font-size: 17px; }
+.ais-player[data-platform="tv"] .ais-player__desc { font-size: 17px; }
+.ais-player[data-platform="tv"] [data-pfocus]:focus { outline: 4px solid #ff9a4d; outline-offset: 3px; transform: scale(1.03); }
+
+/* ===== 分类切换即时反馈：细进度条 + 骨架（不再整块压暗导致「卡住」错觉） ===== */
+.load-strip { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px;
+  border-radius: 10px; background: rgba(124,92,255,.08); border: 1px solid rgba(124,92,255,.2);
+  font-size: 11.5px; color: var(--text-2); position: relative; overflow: hidden; }
+.load-strip__spinner { width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid rgba(255,255,255,.18); border-top-color: var(--accent); animation: ais-spin .8s linear infinite; }
+@keyframes ais-spin { to { transform: rotate(360deg); } }
+.load-strip__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.load-strip__bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,.06); }
+.load-strip__bar i { display: block; height: 100%; width: 38%; border-radius: 2px;
+  background: linear-gradient(90deg, #7c5cff, #c084fc); animation: ais-slide 1.3s ease-in-out infinite; }
+@keyframes ais-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+
+.poster-card.is-skeleton { pointer-events: none; }
+.poster-card.is-skeleton .poster { aspect-ratio: 2 / 3; border-radius: 10px; }
+.skeleton-line { height: 12px; margin-top: 8px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.skeleton-shine { position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: ais-shimmer 1.4s infinite; }
+@keyframes ais-shimmer { 100% { transform: translateX(100%); } }
+.poster.is-skeleton, .poster-card.is-skeleton .poster { position: relative; overflow: hidden; background: rgba(255,255,255,.05); }
+.poster-card.is-skeleton .poster::after, .skeleton-line::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); animation: ais-shimmer 1.4s infinite; }
+
+.tv .load-strip { font-size: 17px; padding: 12px 18px; margin-bottom: 1.2vh; }
+.tv .load-strip__spinner { width: 18px; height: 18px; }
+
+/* TV 筛选：大字号标签列 */
+.tv .filter-row { grid-template-columns: 78px minmax(0, 1fr); gap: 14px; }
+.tv .filter-row__label { padding-top: 11px; font-size: 18px; }
+.tv .filter-row__chips { gap: 10px; }
