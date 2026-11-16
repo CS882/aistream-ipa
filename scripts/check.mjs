@@ -147,9 +147,9 @@ missingFns.length ? bad('适配层函数完整', '缺少定义：' + missingFns.
 
 (cfg.includes("{ id: 'series', label: '电视剧'") && cfg.includes("source: 'catalog'")
   && cfg.includes("{ id: 'iptv', label: 'IPTV'") && cfg.includes("source: 'official-vod'")
-  && !cfg.includes("id: 'short'"))
-  ? ok('影视类型栏目', '顶部按 电影/电视剧/动漫/综艺/纪录片/点播/IPTV 区分，短剧已按需求去掉')
-  : bad('影视类型栏目', '分类未更新或短剧未去掉');
+  && !cfg.includes("id: 'short'") && !cfg.includes("id: 'doc'"))
+  ? ok('影视类型栏目', '顶部按 电影/电视剧/动漫/综艺/点播/IPTV 区分，短剧与纪录片已按需求去掉')
+  : bad('影视类型栏目', '分类未更新或短剧/纪录片未去掉');
 
 /* 本轮新增：分类接口、快捷入口结构化、内置播放器 */
 const extras = read('src/components/extras.js');
