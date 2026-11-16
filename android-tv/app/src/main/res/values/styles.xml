@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TV：全屏、深色、无 ActionBar；overscan 安全区由 tv.css 负责 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorAccent">#8B6CFF</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
