@@ -146,9 +146,10 @@ missingFns.length ? bad('适配层函数完整', '缺少定义：' + missingFns.
   : ok('适配层函数完整', `${requiredFns.length} 个能力均有定义`);
 
 (cfg.includes("{ id: 'series', label: '电视剧'") && cfg.includes("source: 'catalog'")
-  && cfg.includes("{ id: 'iptv', label: 'IPTV'") && cfg.includes("source: 'official-vod'"))
-  ? ok('影视类型栏目', '顶部按 电影/电视剧/动漫/综艺/短剧/纪录片/点播/IPTV 区分，非采集源栏目')
-  : bad('影视类型栏目', '分类未更新');
+  && cfg.includes("{ id: 'iptv', label: 'IPTV'") && cfg.includes("source: 'official-vod'")
+  && !cfg.includes("id: 'short'"))
+  ? ok('影视类型栏目', '顶部按 电影/电视剧/动漫/综艺/纪录片/点播/IPTV 区分，短剧已按需求去掉')
+  : bad('影视类型栏目', '分类未更新或短剧未去掉');
 
 /* 本轮新增：分类接口、快捷入口结构化、内置播放器 */
 const extras = read('src/components/extras.js');
@@ -354,9 +355,11 @@ const ent = read('ios/trollstore.entitlements.plist');
 (pkgSh.includes('ldid -S') && pkgSh.includes('Payload/App.app') && ent.includes('application-identifier'))
   ? ok('巨魔伪签名打包', 'ldid -S 伪签名 + 标准 Payload 结构 + entitlements')
   : bad('巨魔伪签名打包', '打包脚本或 entitlements 不完整');
-(dsSrc.includes('isIOSRuntime()') && dsSrc.includes('IOS_BUILTIN_GATEWAY') && iosCfg.includes('IOS_BUILTIN_GATEWAY'))
-  ? ok('iOS 内置网关', '仅 iOS 原生环境回退到内置网关，桌面/安卓行为不变')
-  : bad('iOS 内置网关', '内置网关未接入或影响其它端');
+(dsSrc.includes('isIOSRuntime()') && dsSrc.includes('IOS_BUILTIN_GATEWAY')
+  && iosCfg.includes('IOS_BUILTIN_GATEWAY') && iosCfg.includes('fnos.jiulingkeji.asia:8890')
+  && JSON.parse(read('capacitor.config.json')).plugins?.CapacitorHttp?.enabled === true)
+  ? ok('iOS 内容源直连', '内置网关直连 8890 + CapacitorHttp 原生层绕过 CORS，装上即用无需服务器配置')
+  : bad('iOS 内容源直连', '内置网关或 CapacitorHttp 配置缺失');
 (prepare.includes('GATEWAY_URL') && prepare.includes('IOS_BUNDLE_ID'))
   ? ok('IPA 构建参数注入', 'Bundle ID / Team ID / 网关可在构建期注入')
   : bad('IPA 构建参数注入', '缺少构建期参数注入');
@@ -371,6 +374,12 @@ const ent = read('ios/trollstore.entitlements.plist');
   && read('src/core/events.js').includes('PLAY_PENDING'))
   ? ok('播放秒开反馈', '点击即刻挂载播放器显示加载态，地址解析完成后再填充内容')
   : bad('播放秒开反馈', '缺少点击后的即时应');
+// 本轮修复：内容源不提供 area 字段，国家筛选需禁用并给出说明，避免点了没反应
+const filtersSrc = read('src/components/filters.js');
+(filtersSrc.includes('filter-unavailable') && filtersSrc.includes('hasArea')
+  && filtersSrc.includes('内容源未提供地区字段'))
+  ? ok('筛选无效项禁用', '内容源无地区字段时禁用国家筛选并说明原因，不再点了没反应')
+  : bad('筛选无效项禁用', '国家筛选仍可点但无效果');
 
 /* 输出 */
 console.log('\n  AIStream 影视 · 交付自检');
