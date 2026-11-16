@@ -56,11 +56,9 @@ jobs:
 
       - name: 生成 / 同步 Xcode 工程
         run: |
-          if [ ! -d ios/App ]; then
-            npx cap add ios
-          else
-            npx cap sync ios
-          fi
+          # ios/ 目录已存在（存放构建脚本），不能只靠目录判断；用 --force 幂等重建原生工程
+          npx cap add ios --force
+          npx cap sync ios
 
       - name: 配置 Info.plist（允许明文 HTTP 访问内网网关）
         run: |
