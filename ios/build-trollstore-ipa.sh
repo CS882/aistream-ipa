@@ -38,7 +38,8 @@ echo "==> 3/6 同步四端 Web 资源"
 npm run sync:assets
 
 echo "==> 4/6 生成 / 同步 Xcode 工程 + ATS 配置"
-if [[ ! -d ios/App ]]; then npx cap add ios; else npx cap sync ios; fi
+npx cap add ios --force
+npx cap sync ios
 PLIST="ios/App/App/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST"
