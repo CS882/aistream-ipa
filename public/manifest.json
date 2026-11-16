@@ -1,0 +1,17 @@
+{
+  "id": "../",
+  "name": "AIStream 影视",
+  "short_name": "AIStream",
+  "description": "四端统一影视浏览、搜索、详情与播放入口",
+  "lang": "zh-CN",
+  "start_url": "../mobile.html?platform=mobile",
+  "scope": "../",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0d14",
+  "theme_color": "#0b0d14",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "__pending": "各端应用商店图标、启动图、包名等发布素材未提供，见 docs/00-待补充项清单.md"
+}
