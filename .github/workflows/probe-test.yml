@@ -1,8 +1,0 @@
-name: Probe Test
-on:
-  workflow_dispatch:
-jobs:
-  test:
-    runs-on: macos-13
-    steps:
-      - run: echo "works on macos-13"
