@@ -334,8 +334,7 @@ const dsSrc = read('src/core/datasource.js');
   ? ok('播放 sid 用 UUID', 'stationId 优先于站点名称，避免 /api/play 兜底返回全站内容')
   : bad('播放 sid 用 UUID', '播放 sid 仍可能用站点名称触发兜底');
 
-(dsSrc.includes('if (/^db_/.test(String(item.id || id)) && item.title)')
-  && dsSrc.includes('async function resolveByTitle'))
+(dsSrc.includes('/^db_/') && dsSrc.includes('item.rawId || item.id || id') && dsSrc.includes('async function resolveByTitle'))
   ? ok('分类卡片播放修正', 'db_ 分类条目改为按标题搜索换真实采集线路，不再跳同一部剧')
   : bad('分类卡片播放修正', 'db_ 分类条目仍直接请求 /api/play');
 
@@ -349,7 +348,7 @@ const pkgSh = read('ios/package-trollstore-ipa.sh');
 const prepare = read('scripts/prepare-trollstore-ipa.mjs');
 const iosCfg = read('src/core/ios-config.js');
 const ent = read('ios/trollstore.entitlements.plist');
-(wf.includes('runs-on: macos-14') && wf.includes('CODE_SIGNING_ALLOWED=NO') && wf.includes('brew install ldid'))
+(/runs-on: macos-\d+(-intel)?/.test(wf) && wf.includes('CODE_SIGNING_ALLOWED=NO') && wf.includes('brew install ldid'))
   ? ok('巨魔 IPA 云端构建', 'macOS runner + 免签名编译 + ldid 伪签名，产出可下载 IPA')
   : bad('巨魔 IPA 云端构建', '工作流缺少免签名编译或伪签名步骤');
 (pkgSh.includes('ldid -S') && pkgSh.includes('Payload/App.app') && ent.includes('application-identifier'))
@@ -361,6 +360,17 @@ const ent = read('ios/trollstore.entitlements.plist');
 (prepare.includes('GATEWAY_URL') && prepare.includes('IOS_BUNDLE_ID'))
   ? ok('IPA 构建参数注入', 'Bundle ID / Team ID / 网关可在构建期注入')
   : bad('IPA 构建参数注入', '缺少构建期参数注入');
+
+// 本轮修复：搜索结果跨站 id 重复（如 179）导致点 A 播 B，需用 stationId 生成唯一 key 并保留 rawId
+(dsSrc.includes('__s_') && dsSrc.includes('rawId:') && dsSrc.includes('item.rawId || item.id'))
+  ? ok('跨站 id 冲突修复', '缓存 key 含 stationId，播放请求用 rawId，避免点 A 卡片播 B 内容')
+  : bad('跨站 id 冲突修复', '未对跨站重复 id 做唯一化处理');
+// 点击卡片即刻反馈：pending 事件先挂载播放器显示加载态，消除解析地址期间的等待感
+(read('src/core/store.js').includes('EVT.PLAY_PENDING')
+  && read('src/components/player.js').includes('openPending')
+  && read('src/core/events.js').includes('PLAY_PENDING'))
+  ? ok('播放秒开反馈', '点击即刻挂载播放器显示加载态，地址解析完成后再填充内容')
+  : bad('播放秒开反馈', '缺少点击后的即时应');
 
 /* 输出 */
 console.log('\n  AIStream 影视 · 交付自检');
