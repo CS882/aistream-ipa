@@ -56,8 +56,13 @@ jobs:
 
       - name: 生成 / 同步 Xcode 工程
         run: |
-          # ios/ 目录已存在（存放构建脚本），不能只靠目录判断；用 --force 幂等重建原生工程
-          npx cap add ios --force
+          # ios/ 目录已存在（存放构建脚本）；cap add 见到 ios/ 就拒绝。
+          # 先把脚本暂存到项目外 → 删除 ios/ → 用 cap add 生成原生工程 → 拷回脚本。
+          mkdir -p "$RUNNER_TEMP/aistream-ios-scripts"
+          cp ios/*.sh ios/*.plist "$RUNNER_TEMP/aistream-ios-scripts/" 2>/dev/null || true
+          rm -rf ios
+          npx cap add ios
+          cp "$RUNNER_TEMP/aistream-ios-scripts/"*.sh "$RUNNER_TEMP/aistream-ios-scripts/"*.plist ios/ 2>/dev/null || true
           npx cap sync ios
 
       - name: 配置 Info.plist（允许明文 HTTP 访问内网网关）
