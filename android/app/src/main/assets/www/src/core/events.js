@@ -26,5 +26,6 @@ export const EVT = Object.freeze({
   STATE: 'state',
   DETAIL: 'detail',
   PLAY: 'play',
+  PLAY_PENDING: 'play-pending',   // 点击卡片即刻通知：先挂载播放器显示加载态，消除等待感
   TOAST: 'toast',
 });
