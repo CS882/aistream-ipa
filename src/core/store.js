@@ -32,7 +32,7 @@ const state = {
   user: null,                   // /api/auth/me 真实用户信息
   extra: null,                  // 当前标签的数据
   mineTab: 'account',           // 「我的」页当前标签
-  filter: { country: '', year: '', sort: 'default' },  // 筛选页前端筛选/排序（country 为地区，year 为年代分组）
+  filter: { country: '', station: '', year: '', sort: 'default' },  // 筛选页前端筛选/排序（country 为地区，year 为年代分组）
   auth: {
     required: true,
     loggedIn: false,
@@ -146,7 +146,7 @@ export async function logout() {
   commit({
     auth: { ...state.auth, loggedIn: false, error: '', busy: false },
     items: [], channels: [], channel: '', detail: null, keyword: '', mineTab: 'account', extra: null,
-    filter: { country: '', year: '', sort: 'default' },
+    filter: { country: '', station: '', year: '', sort: 'default' },
     view: 'list', status: 'need-login', play: null,
   });
 }
@@ -170,7 +170,7 @@ export async function setChannel(channelId) {
   // 乐观切换：有缓存直接换内容；没有就立刻清空并显示骨架 + 顶部进度条，绝不「按了没反应」
   commit({
     channel: channelId, view: 'list', detail: null, keyword: '', page: 1,
-    filter: { ...state.filter, country: '', year: '' },
+    filter: { ...state.filter, country: '', station: '', year: '' },
     items: cached || [],
     status: cached ? 'ok' : 'loading',
     loading: !cached,
@@ -389,7 +389,7 @@ export function setFilter(patch = {}) {
   commit({ filter: { ...state.filter, ...patch } });
 }
 export function clearFilter() {
-  commit({ filter: { country: '', year: '', sort: 'default' } });
+  commit({ filter: { country: '', station: '', year: '', sort: 'default' } });
 }
 
 export function toast(message) {
