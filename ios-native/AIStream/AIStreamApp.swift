@@ -64,58 +64,63 @@ struct MainView: View {
         .background(Theme.bg.ignoresSafeArea())
     }
 
+    /* 手机竖屏放不下「品牌 + 5 个标签 + 用户名 + 退出」一整行：
+       挤在一起时 Spacer 被压到最小，标签会被推到左边裁掉。
+       所以拆成两行 —— 上面品牌和退出，下面标签单独一行（可横向滚，防超宽）。 */
     private var topBar: some View {
-        HStack(spacing: 0) {
-            Text(app.siteName.isEmpty ? "AIStream" : app.siteName)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(Theme.fg)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text(app.siteName.isEmpty ? "AIStream" : app.siteName)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(Theme.fg)
+                    .lineLimit(1)
 
-            Spacer(minLength: 12)
+                Spacer(minLength: 8)
 
-            HStack(spacing: 4) {
-                ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in
-                    Button {
-                        app.tab = i
-                    } label: {
-                        VStack(spacing: 3) {
-                            Text(t)
-                                .font(.system(size: app.tab == i ? 14.5 : 13.5,
-                                              weight: app.tab == i ? .semibold : .regular))
-                                .foregroundColor(app.tab == i ? Theme.fg : Theme.fgWeak)
-                            Capsule()
-                                .fill(app.tab == i ? Theme.accentSoft : Color.clear)
-                                .frame(width: 22, height: 3)
-                        }
-                        .padding(.horizontal, 14)
-                        .frame(height: 52)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                Text(app.userName)
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.fgWeak)
+                    .lineLimit(1)
+
+                Button {
+                    app.logout()
+                } label: {
+                    Text("退出")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.fgDim)
+                        .padding(.horizontal, 10)
+                        .frame(height: 26)
+                        .glassPill()
                 }
+                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 4)
 
-            Spacer(minLength: 12)
-
-            Text(app.userName)
-                .font(.system(size: 12))
-                .foregroundColor(Theme.fgWeak)
-
-            Button {
-                app.logout()
-            } label: {
-                Text("退出")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.fgDim)
-                    .padding(.horizontal, 13)
-                    .frame(height: 30)
-                    .glassPill()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 22) {
+                    ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in
+                        Button {
+                            app.tab = i
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text(t)
+                                    .font(.system(size: 14, weight: app.tab == i ? .semibold : .regular))
+                                    .foregroundColor(app.tab == i ? Color.white : Theme.fgWeak)
+                                Capsule()
+                                    .fill(app.tab == i ? Theme.accentSoft : Color.clear)
+                                    .frame(width: 20, height: 3)
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 18)
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 10)
+            .frame(height: 38)
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }
 
