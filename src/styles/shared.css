@@ -885,3 +885,25 @@ html[data-platform="mobile"] .platform-switch { bottom: 84px; }
 /* EPG：直播频道卡片显示当前节目 */
 .poster__epg { color: #c9b6ff; font-size: 11px; max-width: 100%; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== 播放器：对齐官方客户端快捷布局（顶栏倍速/投屏/更多、右侧旋转、跳过胶囊、广告角标） ===== */
+.ais-player__hbtn { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16);
+  color: #fff; border-radius: 999px; padding: 5px 10px; font-size: 12.5px; white-space: nowrap; }
+.ais-player__hbtn:hover { background: rgba(255,255,255,.2); }
+.ais-player__rotate { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 6;
+  background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.22); color: #fff;
+  border-radius: 999px; padding: 8px 13px; font-size: 13px; }
+.ais-player__skip { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 6;
+  background: linear-gradient(135deg,#7c5cff,#5b8cff); color: #fff; border: none;
+  border-radius: 999px; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+.ais-player__adbadge { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 6;
+  background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.18); color: #c9b6ff;
+  border-radius: 999px; padding: 7px 16px; font-size: 12px; }
+.ais-player__more-menu { position: absolute; right: 10px; top: 46px; z-index: 9; display: flex; flex-direction: column;
+  background: #1b1830; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.ais-player__more-menu button { background: transparent; color: #fff; border: none; padding: 10px 18px;
+  font-size: 13px; text-align: left; white-space: nowrap; }
+.ais-player__more-menu button:hover { background: rgba(255,255,255,.08); }
+.ais-player__art[data-scale="16:9"] video, .ais-player__art[data-scale="4:3"] video { object-fit: contain; }
+.ais-player__art[data-scale="fill"] video { object-fit: fill; }
