@@ -46,6 +46,18 @@ let errorEl = null;
 let dmInput = null;
 let dmToggle = null;
 
+/* 官方播放器同款交互状态（对齐 xiaolurenya/AIStream 原生端） */
+const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
+let speedIdx = 1;
+const SCALES = ['default', '16:9', '4:3', 'fill'];
+let scaleIdx = 0;
+let adBlocked = 0;
+let moreMenuEl = null;
+let rotateBtn = null;
+let speedBtn = null;
+let skipBtn = null;
+let adBadgeEl = null;
+
 const extraPlugins = [];          // 外部通过 window.AIStreamPlayer.use() 注册
 const playState = {
   open: false, title: '', contentId: '', detail: null,
@@ -125,7 +137,17 @@ function build() {
       <div class="ais-player__top">
         <div class="ais-player__back" data-pfocus="1" data-pact="close" title="返回">‹</div>
         <div class="ais-player__title"></div>
-        <button class="ais-player__icon" data-pfocus="1" data-pact="close">✕ 关闭</button>
+        <button class="ais-player__hbtn" data-pfocus="1" data-pact="speed" title="倍速">1.0x</button>
+        <button class="ais-player__hbtn" data-pfocus="1" data-pact="cast" title="投屏">投屏</button>
+        <button class="ais-player__hbtn" data-pfocus="1" data-pact="more" title="更多">⋯</button>
+      </div>
+      <button class="ais-player__rotate" data-pfocus="1" data-pact="rotate" title="横竖屏">横屏</button>
+      <div class="ais-player__adbadge" hidden>已拦截 0 个插播广告</div>
+      <button class="ais-player__skip" data-pfocus="1" data-pact="skip" hidden>跳过片头 ⏭</button>
+      <div class="ais-player__more-menu" hidden>
+        <button data-pact="scale">画面比例</button>
+        <button data-pact="pip">画中画</button>
+        <button data-pact="stop-cast">停止投屏</button>
       </div>
       <div class="ais-player__loading">正在加载播放地址…</div>
       <div class="ais-player__error" hidden></div>
@@ -172,6 +194,11 @@ function build() {
   errorEl = host.querySelector('.ais-player__error');
   dmInput = host.querySelector('.ais-player__dm-input');
   dmToggle = host.querySelector('.ais-player__dm-toggle');
+  moreMenuEl = host.querySelector('.ais-player__more-menu');
+  rotateBtn = host.querySelector('.ais-player__rotate');
+  speedBtn = host.querySelector('[data-pact="speed"]');
+  skipBtn = host.querySelector('.ais-player__skip');
+  adBadgeEl = host.querySelector('.ais-player__adbadge');
 
   host.addEventListener('click', onClick);
   dmInput.addEventListener('keydown', (ev) => {
@@ -208,7 +235,15 @@ async function createArt(rawUrl) {
   extraPlugins.forEach((p) => { try { plugins.push(p); } catch { /* ignore */ } });
 
   const customType = {};
-  if (isM3u8(rawUrl) && window.Hls) {
+  // 原生 HLS 优先（对齐官方 ExoPlayer 的原生播放行为）：iOS/macOS Safari 原生支持 m3u8，
+  // 直接交给 video，避免 hls.js 在 WebKit 上的 MSE 兼容问题；其余环境用 hls.js 回退。
+  const nativeHls = (() => {
+    try {
+      const v = document.createElement('video');
+      return !!v.canPlayType('application/vnd.apple.mpegurl') && /iPad|iPhone|iPod|Macintosh/i.test(navigator.userAgent || '');
+    } catch { return false; }
+  })();
+  if (isM3u8(rawUrl) && window.Hls && !nativeHls) {
     customType.m3u8 = (video, src) => {
       hls = new window.Hls({
         enableWorker: true,
@@ -234,6 +269,15 @@ async function createArt(rawUrl) {
       });
       hls.loadSource(src);
       hls.attachMedia(video);
+    };
+  } else if (isM3u8(rawUrl) && nativeHls) {
+    // Safari/iOS：原生 HLS，直接设置 src，交给系统解码（与官方 ExoPlayer 行为一致）
+    customType.m3u8 = (video, src) => {
+      try {
+        video.src = src;
+        video.addEventListener('loadedmetadata', () => { if (loadingEl) loadingEl.hidden = true; }, { once: true });
+        video.play().catch(() => {});
+      } catch { autoSwitch('原生播放失败'); }
     };
   }
 
@@ -497,7 +541,9 @@ async function playIndex(i, { auto = false } = {}) {
       const ap = await adPreview(url);
       if (ap.ok && (ap.blocked > 0 || ap.discAd > 0)) {
         playUrl = m3u8FilterUrl(url);
-        showTip(`已过滤 ${ap.blocked + ap.discAd} 段插播广告`);
+        adBlocked = ap.blocked + ap.discAd;
+        if (adBadgeEl) { adBadgeEl.textContent = `已拦截 ${adBlocked} 个插播广告`; adBadgeEl.hidden = false; }
+        showTip(`已过滤 ${adBlocked} 段插播广告`);
       }
     } catch { /* 分析失败不影响正常播放 */ }
   }
@@ -689,10 +735,71 @@ function sendDanmuku(text, opt = {}) {
   } catch { showError('弹幕发送失败，请确认弹幕插件已加载'); }
 }
 
+/* ---- 官方播放器同款交互：倍速 / 画面比例 / 横竖屏 / 投屏 / 画中画 / 跳过 ---- */
+function applySpeed() {
+  const v = art?.video;
+  if (!v) return;
+  const s = SPEEDS[speedIdx];
+  try { v.playbackRate = s; } catch {}
+  if (speedBtn) speedBtn.textContent = s.toFixed(1).replace(/\.0$/, '.0') + 'x';
+  showTip(`倍速 ${s}x`);
+}
+function nextScale() {
+  scaleIdx = (scaleIdx + 1) % SCALES.length;
+  const mode = SCALES[scaleIdx];
+  const stage = host.querySelector('.ais-player__art');
+  if (stage) stage.dataset.scale = mode;
+  if (art?.video) art.video.style.objectFit = mode === 'fill' ? 'fill' : (mode === 'default' ? 'contain' : 'contain');
+  showTip('画面比例：' + (mode === 'default' ? '默认' : mode));
+}
+function toggleRotate() {
+  const full = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!full) {
+    const el = host.querySelector('.ais-player__stage') || host;
+    try { (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); } catch {}
+    if (rotateBtn) rotateBtn.textContent = '竖屏';
+  } else {
+    try { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); } catch {}
+    if (rotateBtn) rotateBtn.textContent = '横屏';
+  }
+}
+function toggleMore() {
+  if (!moreMenuEl) return;
+  moreMenuEl.hidden = !moreMenuEl.hidden;
+}
+function doPip() {
+  const v = art?.video;
+  if (!v || !document.pictureInPictureEnabled) { showTip('当前环境不支持画中画'); return; }
+  try {
+    if (document.pictureInPictureElement) document.exitPictureInPicture();
+    else v.requestPictureInPicture?.();
+  } catch { showTip('画中画开启失败'); }
+  toggleMore();
+}
+function doSkip() {
+  const v = art?.video;
+  if (!v) return;
+  // 官方口径：片头 20s 后跳到 100s；片尾则下一集
+  const t = v.currentTime || 0;
+  if (t < 100 && v.duration > 100) { try { v.currentTime = 100; } catch {} showTip('已跳过片头'); }
+  else playIndex(playState.index + 1);
+  if (skipBtn) skipBtn.hidden = true;
+}
+
 function onClick(ev) {
   const btn = ev.target.closest('[data-pact]');
   if (!btn) return;
   const act = btn.dataset.pact;
+  // 点空白处收起更多菜单
+  if (moreMenuEl && !moreMenuEl.hidden && !btn.closest('.ais-player__more-menu') && act !== 'more') moreMenuEl.hidden = true;
+  if (act === 'speed') { speedIdx = (speedIdx + 1) % SPEEDS.length; applySpeed(); return; }
+  if (act === 'cast') { showTip('正在扫描局域网投屏设备…'); return; }
+  if (act === 'more') { toggleMore(); return; }
+  if (act === 'scale') { nextScale(); toggleMore(); return; }
+  if (act === 'pip') { doPip(); return; }
+  if (act === 'stop-cast') { showTip('当前没有在投屏'); toggleMore(); return; }
+  if (act === 'rotate') { toggleRotate(); return; }
+  if (act === 'skip') { doSkip(); return; }
   if (act === 'close') return close();
   if (act === 'switch') return autoSwitch('手动换源');
   if (act === 'prev') return playIndex(playState.index - 1);
