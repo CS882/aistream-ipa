@@ -295,6 +295,8 @@ export async function requestPlay(id) {
     bus.emit(EVT.PLAY, { ok: false, status: 'error' });
     return { ok: false, status: 'error' };
   }
+  // 点击即刻反馈：先让播放器挂载并显示加载态，避免解析地址期间的空白等待
+  bus.emit(EVT.PLAY_PENDING, { title: ds.peekItemTitle(targetId) || state.detail?.title || '' });
   const result = await ds.resolvePlay(targetId);
   let resolvedUrl = result.playUrl || null;
   // 上游 token 模式：外部播放 / 复制链接需要真实地址，先解析第一条线路
