@@ -32,8 +32,12 @@ export function posterCard(item, { focusable = false } = {}) {
     ? `<img class="poster__img" src="${escapeHTML(item.poster)}" alt="${escapeHTML(item.title)}" loading="lazy" onerror="this.style.display='none'" />`
     : '';
   const badge = item.badge ? `<span class="poster__badge">${escapeHTML(item.badge)}</span>` : '';
-  const foot = (item.subtitle || item.score)
-    ? `<div class="poster__foot"><span>${escapeHTML(item.subtitle)}</span>${item.score ? `<span class="poster__score">${escapeHTML(item.score)}</span>` : ''}</div>`
+  // EPG 节目单（官方客户端同款）：直播频道卡片显示当前正在播/下一档节目
+  const epgLine = item.epg?.title
+    ? `<span class="poster__epg" title="下一档：${escapeHTML(item.epg.next || '—')}">${escapeHTML(item.epg.title)}</span>`
+    : '';
+  const foot = (item.subtitle || item.score || epgLine)
+    ? `<div class="poster__foot">${epgLine}<span>${escapeHTML(item.subtitle)}</span>${item.score ? `<span class="poster__score">${escapeHTML(item.score)}</span>` : ''}</div>`
     : '';
   const infoAttr = focusable ? ' data-focusable="1" data-zone="row"' : '';
   return `<div class="poster-card"${attr} data-id="${escapeHTML(item.id)}" role="button" aria-label="${escapeHTML(item.title)}">
