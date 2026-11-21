@@ -381,6 +381,20 @@ const filtersSrc = read('src/components/filters.js');
   ? ok('筛选无效项禁用', '内容源无地区字段时禁用国家筛选并说明原因，不再点了没反应')
   : bad('筛选无效项禁用', '国家筛选仍可点但无效果');
 
+// 本轮移植：官方客户端的签到/兑换/EPG/广告过滤（保持我们的 UI 风格）
+const dsNew = read('src/core/datasource.js');
+const exNew = read('src/components/extras.js');
+(dsNew.includes('doCheckin') && dsNew.includes('fetchRedeem') && dsNew.includes('doRedeem')
+  && exNew.includes('redeemCard') && exNew.includes('data-action="checkin"'))
+  ? ok('会员权益移植', '签到 + 兑换中心 + 邀请码复制，对齐官方客户端功能')
+  : bad('会员权益移植', '签到/兑换功能缺失');
+(dsNew.includes('item.epg') && read('src/components/content.js').includes('poster__epg'))
+  ? ok('EPG节目单移植', '直播频道卡片显示当前/下一档节目')
+  : bad('EPG节目单移植', 'EPG 未接入');
+(dsNew.includes('m3u8FilterUrl') && read('src/components/player.js').includes('adPreview'))
+  ? ok('广告过滤移植', 'm3u8 经服务端分析命中后走过滤清单，对齐官方客户端')
+  : bad('广告过滤移植', '广告过滤未接入');
+
 /* 输出 */
 console.log('\n  AIStream 影视 · 交付自检');
 console.log('  ─────────────────────────────────────────────');
