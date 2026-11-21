@@ -334,6 +334,10 @@ const fm = new FocusManager(el.stage, {
     if (action === 'reset-filter') return store.clearFilter();
     if (action === 'expand-list') return store.expandList();
     if (action === 'retry') return store.refresh({ force: true });
+    if (action === 'checkin') return store.checkin();
+    if (action === 'open-redeem') return store.openExtra('redeem');
+    if (action === 'redeem') return store.redeem(node.dataset.id);
+    if (action === 'copy-invite') { try { navigator.clipboard?.writeText(node.dataset.code || ''); store.toast('邀请码已复制'); } catch {} return; }
     if (action === 'detail') return store.openDetail(id || null);
     if (action === 'play') return store.requestPlay(id || null);
     if (node.dataset.auth) { node.click(); return; }
