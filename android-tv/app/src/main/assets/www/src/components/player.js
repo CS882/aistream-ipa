@@ -793,10 +793,33 @@ window.AIStreamPlayer = {
 
 /* ---------------- 接入统一业务逻辑 ---------------- */
 bus.on(EVT.PLAY, (result) => {
-  if (!result?.ok || !(result.playUrl || result.episodes?.length)) return;
   if (getSetting('playMode') !== 'internal') return;
+  // 解析失败：撤销 pending 外壳，避免加载遮罩一直挂着
+  if (!result?.ok || !(result.playUrl || result.episodes?.length)) {
+    if (playState.open && !art) close();
+    return;
+  }
   open(result);
 });
+
+/** 点击卡片即刻反馈：先挂载播放器外壳 + 显示加载态，避免解析地址期间的空白等待 */
+export function openPending(title) {
+  if (getSetting('playMode') !== 'internal') return;
+  if (!host) build();
+  playState.open = true;
+  // pending 只是提前显示外壳，标题先填；真正的 open() 会用完整标题覆盖
+  if (title && titleEl) titleEl.textContent = String(title);
+  if (errorEl) errorEl.hidden = true;
+  if (loadingEl) {
+    loadingEl.hidden = false;
+    loadingEl.textContent = '正在加载播放地址…';
+  }
+  host.hidden = false;
+  host.dataset.platform = platform();
+  document.documentElement.classList.add('ais-player-open');
+}
+
+bus.on(EVT.PLAY_PENDING, (payload) => openPending(payload?.title));
 
 export function isPlayerOpen() { return playState.open; }
 export function closePlayer() { return close(); }
