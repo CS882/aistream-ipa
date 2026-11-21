@@ -91,6 +91,8 @@ export function applyFilter(items, filter = {}) {
   let list = Array.isArray(items) ? items.slice() : [];
   // 内容源不提供 area 时忽略国家条件，避免把全部内容误筛成 0 条
   if (filter.country && hasArea(list)) list = list.filter((x) => matchesCountry(x?.area, filter.country));
+  // 片源/站点筛选（从当前内容里提取的真实 station）
+  if (filter.station) list = list.filter((x) => (x?.station || '') === filter.station);
   if (filter.year) {
     const g = YEAR_GROUPS.find((x) => x.id === filter.year);
     if (g) list = list.filter((x) => g.test(Number(x?.year) || 0));
@@ -106,7 +108,17 @@ export function applyFilter(items, filter = {}) {
 }
 
 export function hasFilter(filter = {}) {
-  return !!(filter.country || filter.year || (filter.sort && filter.sort !== 'default'));
+  return !!(filter.country || filter.station || filter.year || (filter.sort && filter.sort !== 'default'));
+}
+
+/** 当前数据里出现的片源/站点（去重、按数量降序），供“片源筛选”行使用 */
+export function stationOptions(items) {
+  const map = new Map();
+  (Array.isArray(items) ? items : []).forEach((x) => {
+    const s = x?.station || x?.category || '';
+    if (s) map.set(s, (map.get(s) || 0) + 1);
+  });
+  return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
 }
 
 /** 当前数据是否含可用的地区字段（内容源实测不提供，据此禁用国家筛选） */
@@ -153,15 +165,22 @@ export function filterRows(state, platform = 'desktop') {
     chip(!f.year, 'data-filter="year" data-value=""', '全部')
     + YEAR_GROUPS.map((g) => chip(f.year === g.id, `data-filter="year" data-value="${g.id}"`, g.label)).join('')
   );
+  // 片源/站点筛选：从当前内容里提取真实站点，按数量降序（原版详情页按站点分组线路的同款体验）
+  const stations = stationOptions(state.items);
+  const stationRow = row('片源',
+    chip(!f.station, 'data-filter="station" data-value=""', '全部')
+    + stations.slice(0, 16).map((s) => chip(f.station === s,
+        `data-filter="station" data-value="${e(s)}"`, s)).join('')
+  );
   const sortRow = row('排序',
     SORTS.map((s) => chip((f.sort || 'default') === s.id, `data-sort="${s.id}"`, s.label,
       { disabled: !!s.disabled, hint: s.hint || '' })).join('')
   );
   const total = Array.isArray(state.items) ? state.items.length : 0;
-  return typeRow + countryRow + yearRow + sortRow
+  return typeRow + countryRow + yearRow + stationRow + sortRow
     + `<div class="filter-actions">
         ${hasFilter(f) ? '<button class="btn-ghost btn-mini" data-action="reset-filter">重置筛选</button>' : ''}
         ${state.page < 4 ? `<button class="btn-ghost btn-mini" data-action="expand-list" ${state.loadingMore ? 'disabled' : ''}>${state.loadingMore ? '加载中…' : '加载更多（扩大筛选范围）'}</button>` : ''}
-        <span class="filter-note">已加载 ${total} 条 · 年份/排序可用；国家与热度因内容源未提供对应字段暂不可用</span>
+        <span class="filter-note">已加载 ${total} 条 · 类型/年份/片源/排序可用；国家与热度因内容源未提供对应字段暂不可用</span>
       </div>`;
 }
