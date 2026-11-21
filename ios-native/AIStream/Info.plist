@@ -46,11 +46,12 @@
     <false/>
     <key>UIStatusBarStyle</key>
     <string>UIStatusBarStyleLightContent</string>
+    <!-- 站点是 http，必须整体放开 ATS。
+         注意：不要再加 NSAllowsLocalNetworking / InWebContent / ForMedia，
+         只要出现其中一个，iOS 10+ 就会忽略 NSAllowsArbitraryLoads，公网 http 会被拦。 -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
-        <true/>
-        <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
     <key>ITSAppUsesNonExemptEncryption</key>
