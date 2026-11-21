@@ -395,6 +395,13 @@ const exNew = read('src/components/extras.js');
   ? ok('广告过滤移植', 'm3u8 经服务端分析命中后走过滤清单，对齐官方客户端')
   : bad('广告过滤移植', '广告过滤未接入');
 
+// 本轮：播放器对齐官方客户端的快捷布局 + 原生 HLS 优先内核
+const plSrc = read('src/components/player.js');
+(plSrc.includes('data-pact="speed"') && plSrc.includes('data-pact="cast"')
+  && plSrc.includes('data-pact="rotate"') && plSrc.includes('nativeHls'))
+  ? ok('播放器对齐官方', '顶栏倍速/投屏/更多 + 横竖屏/跳过胶囊 + 原生HLS优先内核，UI保持自有风格')
+  : bad('播放器对齐官方', '播放器布局或内核未对齐');
+
 /* 输出 */
 console.log('\n  AIStream 影视 · 交付自检');
 console.log('  ─────────────────────────────────────────────');
