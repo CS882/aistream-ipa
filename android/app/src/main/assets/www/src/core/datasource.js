@@ -326,12 +326,18 @@ export function mapItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const f = DATA_SOURCE.fieldMap;
   const pick = (k) => (f[k] ? raw[f[k]] ?? null : null);
-  const id = pick('id');
+  const rawId = pick('id');
+  const rawStationId = pick('stationId');
+  // 同一 id（如 179）在不同站点（吉吉/西瓜/电影天堂）会重复；直接用 id 做缓存 key
+  // 会互相覆盖，导致点 A 卡片播 B 内容。用 id+stationId 生成唯一 key 对外暴露。
+  const id = rawId == null ? null
+    : (rawStationId ? `${rawId}__s_${rawStationId}` : String(rawId));
   const title = pick('title') || pick('name') || pick('normalizedTitle') || '';
   const posterRaw = pick('poster') || pick('posterUrl') || pick('carouselUrl')
     || pick('backdrop') || pick('backdropUrl');
   const item = {
     id: id == null ? null : String(id),
+    rawId: rawId == null ? null : String(rawId),   // 站点原始 id（可能跨站重复），请求 play 时用
     title: String(title),
     poster: proxyImage(posterRaw),
     badge: null,                                  // 清晰度字段未确认 → 留空
@@ -824,7 +830,7 @@ export async function resolvePlay(id) {
   // 分类页条目（id 为 db_ 豆瓣 id，无 station）：站点 /api/play?vid=db_xxx 会兜底
   // 返回无关内容。实测正确做法：先用标题 /api/search 换成真实采集条目（id+stationId），
   // 再用其 sources 或 sid+vid 取播放地址。
-  if (/^db_/.test(String(item.id || id)) && item.title) {
+  if (/^db_/.test(String(item.rawId || item.id || id)) && item.title) {
     const converted = await resolveByTitle(item.title, item.year, item.stationId);
     if (converted.ok) {
       return { ...converted, contentId, detail: { ...item, ...(converted.detail || {}) },
@@ -835,9 +841,10 @@ export async function resolvePlay(id) {
   }
 
   // 上游条目（id 为 av_ token）：实测 /api/up/detail 一次返回真实分集（token）+ 简介/演职员/评分
-  if (/^av_/.test(String(item.id || id))) {
-    warmUp(item.id);
-    const d = await fetchUpDetail(item.id, { phase: 1 });
+  const upId = item.rawId || item.id;
+  if (/^av_/.test(String(upId || id))) {
+    warmUp(upId);
+    const d = await fetchUpDetail(upId, { phase: 1 });
     if (d.ok && d.episodes.length) {
       const hasToken = d.episodes.some((x) => x.token);
       return {
@@ -858,7 +865,9 @@ export async function resolvePlay(id) {
   // 传名称会触发上游兜底返回全站内容。优先 UUID，仅无 UUID 时回退名称。
   const sid = item.stationId || item.station;
   if (sid) q.set('sid', String(sid));
-  if (item.id) q.set('vid', String(item.id));
+  // vid 必须用站点原始 id，而不是加了 __s_ 后缀的唯一缓存 key（否则上游不认）。
+  const playVid = item.rawId || item.id;
+  if (playVid) q.set('vid', String(playVid));
   if (!q.has('vid') && item.title) q.set('name', item.title);
   if (item.year) q.set('year', String(item.year));
   if (!q.toString()) return { ok: false, status: 'error', playUrl: null, episodes: [], notice: '缺少可用的条目标识' };
@@ -900,6 +909,12 @@ export async function resolvePlay(id) {
 }
 
 /** 供界面读取的对接状态摘要 */
+/** 轻量读取缓存标题：点击卡片时即刻显示加载态用，不触发任何网络请求 */
+export function peekItemTitle(id) {
+  const it = itemCache.get(String(id || ''));
+  return it?.title || '';
+}
+
 export function statusSummary() {
   return {
     configured: true,                       // 协议/接口/字段均已实测确认
