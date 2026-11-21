@@ -907,3 +907,98 @@ html[data-platform="mobile"] .platform-switch { bottom: 84px; }
 .ais-player__more-menu button:hover { background: rgba(255,255,255,.08); }
 .ais-player__art[data-scale="16:9"] video, .ais-player__art[data-scale="4:3"] video { object-fit: contain; }
 .ais-player__art[data-scale="fill"] video { object-fit: fill; }
+
+/* ===== 聚合播放：自动测速按钮 + 线路延迟标签 ===== */
+.ais-line-ms { margin-left: 6px; font-size: 10px; opacity: .7; color: #7ee0a8; }
+.ais-line-ms.is-bad { color: #ff9aa5; }
+.ais-player__icon[data-pact="speedtest"] { color: #ffd479; }
+
+/* ==================================================================
+   Apple TV 风格播放器视觉升级（覆盖前述样式）
+   毛玻璃 + 胶囊圆角 + 柔和光晕 + 精致留白，聚焦有"浮起"感
+   ================================================================== */
+.ais-player__stage { background: radial-gradient(ellipse at 50% 40%, rgba(30,20,60,.35), rgba(0,0,0,.92)); }
+
+/* 顶部标题栏：更通透的毛玻璃、更大留白、精致字重 */
+.ais-player__top {
+  padding: 22px 30px; gap: 16px;
+  background: linear-gradient(180deg, rgba(8,8,14,.78) 0%, rgba(8,8,14,.28) 55%, transparent 100%);
+  backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.ais-player__back {
+  width: 46px; height: 46px; font-size: 32px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  transition: transform .18s ease, background .18s ease;
+}
+.ais-player__back:hover { transform: scale(1.08); background: rgba(255,255,255,.2); }
+.ais-player__title { font-size: 20px; font-weight: 600; letter-spacing: .3px; color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+
+/* 顶栏快捷按钮：Apple TV 玻璃胶囊 */
+.ais-player__hbtn {
+  padding: 9px 18px; font-size: 13px; font-weight: 500; border-radius: 999px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
+  color: rgba(255,255,255,.92); box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.ais-player__hbtn:hover, .ais-player__hbtn:focus {
+  transform: translateY(-2px) scale(1.04); background: rgba(255,255,255,.24);
+  box-shadow: 0 8px 26px rgba(124,108,255,.35), 0 0 0 2px rgba(255,255,255,.25) inset;
+}
+
+/* 底部功能条：悬浮玻璃面板 + 胶囊按钮 */
+.ais-player__tbar {
+  gap: 10px; padding: 14px 22px; bottom: 62px;
+  left: 50%; right: auto; transform: translateX(-50%); width: min(96%, 1100px);
+  border-radius: 22px;
+  background: rgba(20,18,32,.55);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%);
+  box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  opacity: .34;
+}
+.ais-player__stage:hover .ais-player__tbar, .ais-player__stage:focus-within .ais-player__tbar { opacity: 1; }
+.ais-player__icon {
+  padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  color: rgba(255,255,255,.9);
+  transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.ais-player__icon:hover, .ais-player__icon:focus {
+  transform: translateY(-2px); background: rgba(139,108,255,.28);
+  border-color: rgba(179,140,255,.5); color: #fff;
+  box-shadow: 0 6px 18px rgba(124,108,255,.4);
+}
+.ais-player__icon[data-pact="speedtest"] { color: #ffd479; }
+.ais-player__dm-toggle {
+  border-radius: 999px; background: rgba(255,255,255,.1);
+  transition: transform .16s ease;
+}
+.ais-player__dm-toggle:hover { transform: scale(1.06); }
+.ais-player__dm-toggle.is-on { border-color: rgba(139,108,255,.6); background: rgba(139,108,255,.24); color: #fff; }
+.ais-player__dm-input {
+  border-radius: 999px; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14);
+}
+.ais-player__dm-input:focus { border-color: rgba(139,108,255,.6); }
+
+/* 右侧旋转胶囊 / 跳过片头：Apple TV 玻璃 */
+.ais-player__rotate, .ais-player__skip, .ais-player__adbadge {
+  backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.ais-player__rotate { border-radius: 999px; }
+.ais-player__skip {
+  background: linear-gradient(135deg, rgba(139,108,255,.95), rgba(180,92,255,.95));
+  font-weight: 600; letter-spacing: .3px;
+}
+.ais-player__skip:hover { transform: translateX(-50%) scale(1.05); }
+
+/* 线路延迟标签：Apple TV 精致绿 */
+.ais-line-ms { color: #7ee0a8; background: rgba(126,224,168,.12); padding: 1px 6px; border-radius: 6px; }
+.ais-line-ms.is-bad { color: #ff9aa5; background: rgba(255,154,165,.12); }
+
+/* ArtPlayer 进度条与控件：紫色主题 */
+.ais-player .art-progress-played { background: linear-gradient(90deg, #8b6cff, #b45cff) !important; }
+.ais-player .art-control:hover, .ais-player .art-icon-hover { color: #c9b6ff !important; }
