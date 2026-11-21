@@ -18,13 +18,13 @@ export const IOS_TEAM_ID = 'AAAAAAAAAA';
 
 /**
  * 内置内容源网关。
- * 内容源 fnos.jiulingkeji.asia:8890 无 CORS 头，iOS WebView 直连会被拦截；
- * iOS 原生壳又没有内嵌 Node 代理，因此在 fnos 服务器上另跑一份本项目的
- * server.js 监听 8891（AISTREAM_HOST=127.0.0.1:8890 PORT=8891），
- * 再把 8891 放行到公网，即可"装上即用"。
- * 构建时可用环境变量 GATEWAY_URL 覆盖。
+ * 直连公网可达的 8890；CORS 由 CapacitorHttp 原生 HTTP 插件解决
+ * （capacitor.config.json 已开启 plugins.CapacitorHttp.enabled=true，
+ *  WebView 的 fetch 会被 patch 成走原生层，不受 WebView CORS 限制）。
+ * 因此无需在服务器另跑代理或放行额外端口，装上即用。
+ * 构建时可用环境变量 GATEWAY_URL 覆盖为自建网关。
  */
-export const IOS_BUILTIN_GATEWAY = 'http://fnos.jiulingkeji.asia:8891';
+export const IOS_BUILTIN_GATEWAY = 'http://fnos.jiulingkeji.asia:8890';
 
 /**
  * 是否为 iOS 原生（Capacitor）运行环境。
