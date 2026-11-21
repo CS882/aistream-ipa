@@ -72,7 +72,8 @@ struct FlexStr: Decodable {
 }
 
 struct Card: Decodable, Identifiable {
-    let id: FlexStr?
+    // 服务端的 id 字段读进 rawId，避免和 Identifiable 要求的 id 重名
+    let rawId: FlexStr?
     let title: String?
     let poster: String?
     let year: FlexStr?
@@ -80,9 +81,13 @@ struct Card: Decodable, Identifiable {
     let media: String?
     let station: String?
 
-    var uid: String { id?.value ?? UUID().uuidString }
-    var idKey: String { id?.value ?? "" }
-    var id: String { uid }
+    enum CodingKeys: String, CodingKey {
+        case rawId = "id"
+        case title, poster, year, score, media, station
+    }
+
+    var idKey: String { rawId?.value ?? "" }
+    var id: String { rawId?.value ?? (title ?? UUID().uuidString) }
 
     var scoreText: String {
         guard let s = score?.value, let v = Double(s), v > 0 else { return "" }
@@ -123,9 +128,10 @@ struct Source: Decodable {
     let episodes: [Episode]?
 }
 
-struct Episode: Decodable {
+struct Episode: Decodable, Identifiable {
     let name: String?
     let url: String?
+    var id: String { (url ?? "") + "|" + (name ?? "") }
 }
 
 struct Detail: Decodable {
