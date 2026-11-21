@@ -75,7 +75,9 @@ struct Card: Decodable, Identifiable {
     // 服务端的 id 字段读进 rawId，避免和 Identifiable 要求的 id 重名
     let rawId: FlexStr?
     let title: String?
+    // home 接口给的是 poster，catalog/api/up 给的是 poster_url —— 两个都要认
     let poster: String?
+    let posterUrl: String?
     let year: FlexStr?
     let score: FlexStr?
     let media: String?
@@ -84,6 +86,14 @@ struct Card: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case rawId = "id"
         case title, poster, year, score, media, station
+        case posterUrl = "poster_url"
+    }
+
+    // 统一出口：谁有就用谁，调用方不用关心数据来自哪个接口
+    var posterPath: String? {
+        if let p = poster, !p.isEmpty { return p }
+        if let u = posterUrl, !u.isEmpty { return u }
+        return nil
     }
 
     var idKey: String { rawId?.value ?? "" }
@@ -198,7 +208,7 @@ struct Api {
         return try await get(p)
     }
 
-    static func search(_ q: String) async throws -> PlayResp {
+    static func search(_ q: String) async throws -> SearchResp {
         try await get("/api/search?q=" + (q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""))
     }
 
@@ -212,4 +222,109 @@ struct Api {
         if !s.hasPrefix("/") { s = "/" + s }
         return URL(string: base + s)
     }
+}
+
+// MARK: - 用户 / 收藏 / 直播
+
+struct ListResp: Decodable {
+    let items: [Card]?
+}
+
+struct VipInfo: Decodable {
+    let level: FlexStr?
+    let name: String?
+    let noAds: Bool?
+    let expire: String?
+    let days: FlexStr?
+}
+
+struct CheckinInfo: Decodable {
+    let today: Bool?
+    let streak: FlexStr?
+    let last: String?
+}
+
+struct InviteInfo: Decodable {
+    let code: String?
+    let invited: FlexStr?
+    let perInvite: FlexStr?
+}
+
+struct DailyInfo: Decodable {
+    let watchMin: FlexStr?
+    let date: String?
+}
+
+struct PointsResp: Decodable {
+    let points: FlexStr?
+    let vip: VipInfo?
+    let checkin: CheckinInfo?
+    let invite: InviteInfo?
+    let daily: DailyInfo?
+}
+
+struct CheckinResp: Decodable {
+    let ok: Bool?
+    let gained: FlexStr?
+    let streak: FlexStr?
+    let points: FlexStr?
+    let msg: String?
+    let error: String?
+}
+
+struct IptvCh: Decodable, Identifiable {
+    let cid: FlexStr?
+    let name: String?
+    let group: String?
+    let src: String?
+    let direct: Bool?
+    let logo: String?
+    var id: String { (cid?.value ?? "") + "|" + (name ?? "") }
+}
+
+struct IptvResp: Decodable {
+    let enabled: Bool?
+    let denied: Bool?
+    let count: Int?
+    let error: String?
+    let channels: [IptvCh]?
+    let groupOrder: [String]?
+}
+
+extension Api {
+    static func pointsMe() async throws -> PointsResp {
+        try await get("/api/points/me")
+    }
+
+    static func checkin() async throws -> CheckinResp {
+        let data = try await raw("/api/checkin", method: "POST", body: [:])
+        return try JSONDecoder().decode(CheckinResp.self, from: data)
+    }
+
+    static func favs() async throws -> [Card] {
+        let r: ListResp = try await get("/api/fav")
+        return r.items ?? []
+    }
+
+    static func history() async throws -> [Card] {
+        let r: ListResp = try await get("/api/history")
+        return r.items ?? []
+    }
+
+    static func iptv() async throws -> IptvResp {
+        try await get("/api/iptv")
+    }
+}
+
+struct CollectItem: Decodable {
+    let id: FlexStr?
+    let name: String?
+    let poster: String?
+    let year: FlexStr?
+    let stationId: String?
+}
+
+struct SearchResp: Decodable {
+    let tmdb: [Card]?
+    let collect: [CollectItem]?
 }

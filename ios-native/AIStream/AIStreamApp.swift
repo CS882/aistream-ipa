@@ -54,8 +54,8 @@ struct MainView: View {
                 switch app.tab {
                 case 0: HomeView()
                 case 1: CatalogView()
-                case 2: PlaceholderView(text: "直播")
-                case 3: PlaceholderView(text: "收藏")
+                case 2: LiveView()
+                case 3: CardGridView(title: "收藏") { try await Api.favs() }
                 default: MeView()
                 }
             }
@@ -133,35 +133,5 @@ struct PlaceholderView: View {
                 .font(.system(size: 13)).foregroundColor(Theme.fgWeak)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// 我的
-struct MeView: View {
-    @EnvironmentObject var app: AppState
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("我的").font(.system(size: 24, weight: .bold)).foregroundColor(Theme.fg)
-                    .padding(.top, 6)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        Circle().fill(Theme.grad).frame(width: 44, height: 44)
-                            .overlay(Text(String(app.userName.prefix(1))).font(.system(size: 18, weight: .bold)).foregroundColor(.white))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.userName.isEmpty ? "未登录" : app.userName)
-                                .font(.system(size: 16, weight: .semibold)).foregroundColor(Theme.fg)
-                            Text(Prefs.shared.base).font(.system(size: 11)).foregroundColor(Theme.fgWeak)
-                        }
-                        Spacer()
-                    }
-                }
-                .padding(16)
-                .cardBg()
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-        }
     }
 }

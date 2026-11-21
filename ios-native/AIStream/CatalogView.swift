@@ -19,6 +19,10 @@ struct CatalogView: View {
 
     @State private var optFor = -1
     @State private var pick: Card?
+    @State private var query = ""
+    @State private var searching = false
+    @State private var searchResults: [Card] = []
+    @FocusState private var searchOn: Bool
 
     struct Meta {
         let type: String
@@ -26,6 +30,7 @@ struct CatalogView: View {
     }
 
     private var shown: [Card] {
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty { return searchResults }
         var list = items
         if !fYear.isEmpty { list = list.filter { matchYear($0.year?.value, fYear) } }
         if !fArea.isEmpty { list = list.filter { metas[$0.idKey]?.area == fArea } }
@@ -52,7 +57,7 @@ struct CatalogView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(kinds[kindIdx].1)  ·  \(shown.count) 部")
+            Text(isSearchMode ? "搜索  ·  \(shown.count) 部" : "\(kinds[kindIdx].1)  ·  \(shown.count) 部")
                 .font(.system(size: 24, weight: .bold))
                 .foregroundColor(Theme.fg)
 
@@ -60,10 +65,29 @@ struct CatalogView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
                     .foregroundColor(Theme.fgWeak)
-                Text("搜片名（全网聚合）")
+
+                TextField("搜片名（全网聚合）", text: $query)
+                    .focused($searchOn)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
                     .font(.system(size: 13))
-                    .foregroundColor(Theme.fgWeak)
-                Spacer()
+                    .foregroundColor(Theme.fg)
+                    .onSubmit { runSearch() }
+
+                if searching {
+                    ProgressView().scaleEffect(0.6).tint(Theme.accentSoft)
+                } else if !query.isEmpty {
+                    Button {
+                        query = ""
+                        searchResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Theme.fgWeak)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 16)
             .frame(height: 40)
@@ -157,6 +181,33 @@ struct CatalogView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var isSearchMode: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /* 搜索走 /api/search（豆瓣 + 采集站两路合并），结果直接顶掉列表；
+       清空输入框立刻回到当前分类。 */
+    private func runSearch() {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { searchResults = []; return }
+        searchOn = false
+        searching = true
+        Task {
+            var out: [Card] = []
+            if let r = try? await Api.search(q) {
+                out += (r.tmdb ?? [])
+                out += (r.collect ?? []).map { c in
+                    Card(rawId: c.id, title: c.name, poster: c.poster, posterUrl: nil,
+                         year: c.year, score: nil, media: "collect", station: c.stationId)
+                }
+            }
+            await MainActor.run {
+                searchResults = out
+                searching = false
+            }
+        }
     }
 
     // MARK: 数据

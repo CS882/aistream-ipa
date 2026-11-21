@@ -2,6 +2,7 @@ import SwiftUI
 
 // 首页：通栏 Hero + 一行行栏目，整页一起滚（与 Android 版同构）
 struct HomeView: View {
+    @EnvironmentObject private var app: AppState
     @State private var shelves: [Shelf] = []
     @State private var banner: [Card] = []
     @State private var cur = 0
@@ -22,14 +23,40 @@ struct HomeView: View {
                         .font(.system(size: 13)).foregroundColor(Theme.accentSoft)
                 }
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        hero
-                        ForEach(Array(shelves.enumerated()), id: \.offset) { _, s in
-                            shelfRow(s)
+                VStack(spacing: 0) {
+                    // 首页也给一个搜索入口，点了直接切到分类页的输入框
+                    Button {
+                        app.tab = 1
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.fgWeak)
+                            Text("搜片名（全网聚合）")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.fgWeak)
+                            Spacer()
                         }
+                        .padding(.horizontal, 16)
+                        .frame(height: 38)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.05))
+                        )
                     }
-                    .padding(.bottom, 26)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 6)
+
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            hero
+                            ForEach(Array(shelves.enumerated()), id: \.offset) { _, s in
+                                shelfRow(s)
+                            }
+                        }
+                        .padding(.bottom, 26)
+                    }
                 }
             }
         }
@@ -53,7 +80,7 @@ struct HomeView: View {
     private func heroPage(_ c: Card) -> some View {
         ZStack(alignment: .bottomLeading) {
             GeometryReader { g in
-                AsyncImage(url: Api.posterURL(c.poster)) { phase in
+                AsyncImage(url: Api.posterURL(c.posterPath)) { phase in
                     if let img = phase.image {
                         img.resizable().aspectRatio(contentMode: .fill)
                     } else {
@@ -153,7 +180,7 @@ struct HomeView: View {
                 let key = (c.title ?? "") + "|" + (c.year?.value ?? "")
                 if seen.contains(key) { continue }
                 seen.insert(key)
-                if Api.posterURL(c.poster) == nil { continue }
+                if Api.posterURL(c.posterPath) == nil { continue }
                 out.append(c)
                 if out.count >= 6 { return out }
             }
@@ -199,7 +226,7 @@ struct PosterCard: View {
             .aspectRatio(118.0 / 171.0, contentMode: .fit)
             .overlay(
                 GeometryReader { g in
-                    AsyncImage(url: Api.posterURL(card.poster)) { phase in
+                    AsyncImage(url: Api.posterURL(card.posterPath)) { phase in
                         if let img = phase.image {
                             img.resizable()
                                 .aspectRatio(contentMode: .fill)
