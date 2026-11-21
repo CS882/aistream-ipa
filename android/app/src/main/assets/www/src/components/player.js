@@ -61,7 +61,7 @@ let adBadgeEl = null;
 const extraPlugins = [];          // 外部通过 window.AIStreamPlayer.use() 注册
 const playState = {
   open: false, title: '', contentId: '', detail: null,
-  episodes: [], lines: [], line: '', index: 0, page: 0,
+  episodes: [], lines: [], line: '', lineSpeed: null, index: 0, page: 0,
   introSkipped: false, outroTriggered: false, danmukuOn: true,
   failed: new Set(),        // 已判定不可用的线路
   switchCount: 0,           // 自动换源次数上限，防止死循环
@@ -97,6 +97,44 @@ function playableUrl(raw) {
   if (getSetting('streamProxy') === false) return raw;
   if (!isCrossOrigin(raw)) return raw;
   return proxyEndpoint() + '?u=' + encodeURIComponent(raw);
+}
+
+/* ---------------- 播放页地址解析（对齐官方客户端 resolveUrl） ----------------
+ * 采集站给的往往不是视频直链，而是一个“播放页”HTML（内含 const vid='...m3u8'）。
+ * 直接把 HTML 交给 hls.js 必然失败——这正是此前“影片不能播放”的根因。
+ * 这里抓回播放页文本，抠出真实的 m3u8 / mp4 地址。
+ */
+const RX_M3U8 = /(https?:)?\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/i;
+const RX_MP4 = /(https?:)?\/\/[^"'\s<>]+?\.(mp4|flv)(\?[^"'\s<>]*)?/i;
+function extractPlayable(body) {
+  const norm = String(body || '')
+    .replace(/\\u002F/gi, '/').replace(/\\u0026/gi, '&')
+    .replace(/\\\//g, '/')                       // \/ → /
+    .replace(/(https?:)\/{2,}/i, '$1//');        // 修正协议后多余斜杠
+  const m = norm.match(RX_M3U8) || norm.match(RX_MP4);
+  if (!m) return null;
+  let s = m[0];
+  if (s.startsWith('//')) s = 'https:' + s;
+  return s;
+}
+async function resolvePlayUrl(raw, signal) {
+  if (!raw) return raw;
+  // 已是直链：直接用
+  if (/\.m3u8(\?|#|$)/i.test(raw) || /\.(mp4|flv)(\?|#|$)/i.test(raw)) return raw;
+  // 抓取播放页 HTML（经同源代理，绕过 CORS）
+  try {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+    if (signal && ctrl) signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+    const fetchUrl = proxyEndpoint() + '?u=' + encodeURIComponent(raw);
+    const res = await fetch(fetchUrl, { signal: ctrl?.signal });
+    if (timer) clearTimeout(timer);
+    if (!res.ok) return raw;
+    const text = await res.text();
+    if (text.trimStart().startsWith('#EXTM3U')) return raw;
+    const hit = extractPlayable(text);
+    return hit || raw;
+  } catch { return raw; }
 }
 
 /* ---------------- 开源库按需加载 ---------------- */
@@ -157,6 +195,7 @@ function build() {
         <button class="ais-player__icon" data-pfocus="1" data-pact="danmuku-send">发送</button>
         <span class="ais-player__tbar-sep"></span>
         <button class="ais-player__icon" data-pfocus="1" data-pact="switch">换源</button>
+        <button class="ais-player__icon" data-pfocus="1" data-pact="speedtest" title="自动测速并切换到最快线路">⚡ 测速</button>
         <button class="ais-player__icon" data-pfocus="1" data-pact="prev">上一集</button>
         <button class="ais-player__icon" data-pfocus="1" data-pact="next">下一集</button>
         <button class="ais-player__icon" data-pfocus="1" data-pact="external">外部打开</button>
@@ -343,9 +382,14 @@ function renderLines() {
       + '<span class="ais-player__empty">可用「换源」切换备用线路</span>';
     return;
   }
-  linesEl.innerHTML = playState.lines.map((x) => `<button class="ais-player__line-chip ${x === playState.line ? 'is-on' : ''}"
-      data-pfocus="1" data-pact="line" data-line="${e(x)}" title="${e(x)}">${e(x)}</button>`).join('')
-    || '<span class="ais-player__empty">默认线路</span>';
+  linesEl.innerHTML = playState.lines.map((x) => {
+    const ms = playState.lineSpeed?.[x];
+    const badge = ms == null ? '' : (ms === Infinity
+      ? '<small class="ais-line-ms is-bad">超时</small>'
+      : `<small class="ais-line-ms">${ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's'}</small>`);
+    return `<button class="ais-player__line-chip ${x === playState.line ? 'is-on' : ''}"
+      data-pfocus="1" data-pact="line" data-line="${e(x)}" title="${e(x)}">${e(x)}${badge}</button>`;
+  }).join('') || '<span class="ais-player__empty">默认线路</span>';
 }
 
 function epsOfLine() {
@@ -533,10 +577,13 @@ async function playIndex(i, { auto = false } = {}) {
     }
   }
   if (!url) { autoSwitch('该集没有播放地址'); return; }
-  // 广告过滤（官方客户端同款）：采集站 m3u8 先让服务端按后台规则分析，
-  // 命中插播广告则改用服务端改写后的清单（切片仍为源站直链，不占上行）。
-  let playUrl = url;
-  if (isM3u8(url) && getSetting('adFilter') !== false) {
+  // 第一步：采集站常给“播放页”HTML，先抠出真实 m3u8/mp4（官方 resolveUrl 同款）
+  if (loadingEl) { loadingEl.hidden = false; loadingEl.textContent = '正在解析播放地址…'; }
+  let resolved = await resolvePlayUrl(url);
+  if (!playState.open || token !== playState.playToken) return;
+  // 第二步：广告过滤——服务端按后台规则分析，命中插播则走改写后的清单。
+  let playUrl = resolved;
+  if (isM3u8(resolved) && getSetting('adFilter') !== false) {
     try {
       const ap = await adPreview(url);
       if (ap.ok && (ap.blocked > 0 || ap.discAd > 0)) {
@@ -654,6 +701,7 @@ async function open(result) {
   playState.tab = 'eps';
   playState.failed.clear();
   playState.switchCount = 0;
+  playState.lineSpeed = null;
   renderLines();
   renderEpisodes();
   renderInfo();
@@ -691,6 +739,61 @@ function linesOf(episodes) {
   const set = new Set();
   episodes.forEach((ep) => set.add(lineOf(ep)));
   return [...set];
+}
+
+/* ---------------- 聚合播放 · 自动测速选源（对齐原版 18 线路体验） ---------------- */
+/** 单条线路测速：解析出真实地址后，经代理拉取前若干字节计时（ms），失败返回 Infinity */
+async function measureLine(line, signal) {
+  const eps = playState.episodes;
+  const ep = eps.find((x) => lineOf(x) === line && (x.url || x.token));
+  if (!ep) return { line, ms: Infinity };
+  let url = ep.url;
+  if (!url && ep.token) {
+    try {
+      const r = await resolveUpToken(ep.token, { skip: playState.skip, keep: playState.keepLabel });
+      if (r?.ok) url = r.url;
+    } catch { return { line, ms: Infinity }; }
+  }
+  if (!url) return { line, ms: Infinity };
+  try {
+    // 播放页先解析出真实 m3u8
+    const real = await resolvePlayUrl(url);
+    const probe = proxyEndpoint() + '?u=' + encodeURIComponent(real);
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
+    if (signal && ctrl) signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+    const t0 = performance.now();
+    const res = await fetch(probe, { signal: ctrl?.signal, headers: { Range: 'bytes=0-4095' } });
+    const reader = res.body?.getReader?.();
+    if (reader) { await reader.read(); try { reader.cancel(); } catch {} }
+    else await res.text().catch(() => {});
+    const ms = Math.round(performance.now() - t0);
+    if (timer) clearTimeout(timer);
+    return res.ok || ms < 6000 ? { line, ms } : { line, ms: Infinity };
+  } catch { return { line, ms: Infinity }; }
+}
+
+/** 并发测速所有线路，按延迟排序；可选自动切到最快 */
+async function speedTestLines({ autoSwitchToFastest = true } = {}) {
+  const lines = playState.lines.slice();
+  if (lines.length < 2) { showTip('当前只有一条线路，无需测速'); return []; }
+  const btn = host.querySelector('[data-pact="speedtest"]');
+  if (btn) { btn.disabled = true; btn.textContent = '测速中…'; }
+  showTip(`正在测速 ${lines.length} 条线路…`);
+  const results = await Promise.all(lines.map((l) => measureLine(l)));
+  results.sort((a, b) => a.ms - b.ms);
+  playState.lineSpeed = Object.fromEntries(results.map((r) => [r.line, r.ms]));
+  renderLines();   // 线路按钮上显示延迟
+  const fastest = results.find((r) => r.ms < Infinity);
+  if (btn) { btn.disabled = false; btn.textContent = '⚡ 测速'; }
+  if (!fastest) { showTip('所有线路测速失败，请检查网络'); return results; }
+  const msText = (ms) => ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+  showTip(`最快线路：${fastest.line}（${msText(fastest.ms)}）`);
+  if (autoSwitchToFastest && fastest.line !== playState.line) {
+    const first = playState.episodes.findIndex((x) => lineOf(x) === fastest.line);
+    if (first >= 0) { playState.line = fastest.line; playIndex(first); }
+  }
+  return results;
 }
 
 function switchTab(tab) {
@@ -802,6 +905,7 @@ function onClick(ev) {
   if (act === 'skip') { doSkip(); return; }
   if (act === 'close') return close();
   if (act === 'switch') return autoSwitch('手动换源');
+  if (act === 'speedtest') return speedTestLines();
   if (act === 'prev') return playIndex(playState.index - 1);
   if (act === 'next') return playIndex(playState.index + 1);
   if (act === 'ep') return playIndex(Number(btn.dataset.index));
