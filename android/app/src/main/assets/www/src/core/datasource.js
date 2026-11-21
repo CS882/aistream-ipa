@@ -73,9 +73,13 @@ export const ENDPOINTS = Object.freeze({
   fav: 'api/fav',
   reserved: 'api/preview/reserved',
   points: 'api/points/me',
+  checkin: 'api/checkin',
+  redeem: 'api/redeem',
   weekly: 'api/weekly',
   iptv: 'api/iptv',
   iptvStream: 'api/iptv/stream',
+  adPreview: 'api/ad-preview',
+  m3u8filter: 'api/m3u8filter',
   officialVod: 'api/official-vod',
 });
 
@@ -501,8 +505,20 @@ export async function fetchIptvChannels() {
   if (d.enabled === false) return { ok: true, status: 'ok', data: [], notice: 'IPTV 未开启（站点后台开关）' };
   if (d.denied) return { ok: true, status: 'ok', data: [], notice: '管理员未对该账号开放 IPTV' };
   const list = Array.isArray(d.channels) ? d.channels : [];
-  const items = list.map(mapIptvChannel).filter(Boolean);
-  return { ok: true, status: 'ok', data: items,
+  const nowMap = (d.now && typeof d.now === 'object') ? d.now : {};
+  const items = list.map((ch) => {
+    const item = mapIptvChannel(ch);
+    if (item && nowMap[ch.cid]) {
+      const epg = nowMap[ch.cid] || {};
+      // EPG：当前节目 / 下一档，供频道卡片与播放器显示（对齐官方客户端）
+      item.epg = {
+        title: epg.t || '', start: Number(epg.cs) || 0, end: Number(epg.ce) || 0,
+        next: epg.next || '', nextStart: Number(epg.ns) || 0,
+      };
+    }
+    return item;
+  }).filter(Boolean);
+  return { ok: true, status: 'ok', data: items, epg: nowMap,
     notice: items.length ? '' : (d.error || '频道清单为空') };
 }
 
@@ -547,11 +563,65 @@ export async function fetchExtra(id) {
   if (entry.view === 'points') {
     return { ok: true, label: entry.label, kind: 'points', points: d, empty: '' };
   }
+  if (entry.view === 'redeem') {
+    return { ok: true, label: entry.label, kind: 'redeem', enabled: d.enabled !== false,
+      items: Array.isArray(d.items) ? d.items : [], me: d.me || null, empty: '' };
+  }
   if (entry.view === 'weekly') {
     return { ok: true, label: entry.label, kind: 'weekly', days: Array.isArray(d.days) ? d.days : [],
       empty: (Array.isArray(d.days) && d.days.length) ? '' : '该周暂无追剧数据' };
   }
   return { ok: true, label: entry.label, kind: 'text', text: '', empty: '暂不可用' };
+}
+
+/* ---------------- 会员权益：签到 / 兑换码（对齐官方原生客户端） ---------------- */
+
+/** 每日签到：POST /api/checkin → {msg,gained,error} */
+export async function doCheckin() {
+  if (!hasToken()) return { ok: false, status: 'need-login', error: '请先登录' };
+  const r = await api(ENDPOINTS.checkin, { method: 'POST' });
+  if (!r.ok) return { ok: false, status: r.status, error: r.error || '签到失败' };
+  const d = r.data || {};
+  return { ok: true, gained: d.gained ?? d.points ?? 0, msg: d.msg || '', error: '' };
+}
+
+/** 兑换码列表与我的兑换：GET /api/redeem → {enabled,items,me} */
+export async function fetchRedeem() {
+  if (!hasToken()) return { ok: false, status: 'need-login', error: '请先登录' };
+  const r = await api(ENDPOINTS.redeem);
+  if (!r.ok) return { ok: false, status: r.status, error: r.error, label: '兑换中心', kind: 'redeem' };
+  const d = r.data || {};
+  return { ok: true, label: '兑换中心', kind: 'redeem', enabled: d.enabled !== false,
+    items: Array.isArray(d.items) ? d.items : [], me: d.me || null, empty: '' };
+}
+
+/** 提交兑换：POST /api/redeem {id} */
+export async function doRedeem(id) {
+  if (!hasToken()) return { ok: false, status: 'need-login', error: '请先登录' };
+  const r = await api(ENDPOINTS.redeem, { method: 'POST', body: { id: String(id) } });
+  if (!r.ok) return { ok: false, status: r.status, error: r.error || '兑换失败' };
+  return { ok: true, msg: '兑换成功', data: r.data || {} };
+}
+
+/* ---------------- 广告过滤：服务端分析 + 清单改写（对齐官方原生客户端） ---------------- */
+
+/** 让服务端按「广告过滤」规则分析一条播放地址 */
+export async function adPreview(url) {
+  if (!url || !hasToken()) return { ok: false, blocked: 0, discAd: 0 };
+  const r = await api(ENDPOINTS.adPreview + '?url=' + encodeURIComponent(url));
+  if (!r.ok) return { ok: false, blocked: 0, discAd: 0 };
+  const d = r.data || {};
+  return { ok: true, blocked: Number(d.blocked) || 0, discAd: Number(d.discAd) || 0,
+    verdict: d.verdict || '', enabled: !!d.enabled };
+}
+
+/** 生成服务端改写后的 m3u8 地址（去插播段，切片仍为源站直链） */
+export function m3u8FilterUrl(url) {
+  if (!url) return url;
+  const g = gatewayBase();
+  const token = getToken();
+  const path = ENDPOINTS.m3u8filter + '?url=' + encodeURIComponent(url) + '&token=' + encodeURIComponent(token || '');
+  return g ? g + '/' + path.replace(/^\/+/, '') : path;
 }
 
 /** 浏览：按顶部影视类型频道分派到对应实测接口 */
