@@ -120,8 +120,13 @@ struct LoginView: View {
                 if let rn = r.user?.username, !rn.isEmpty {
                     Prefs.shared.user = rn
                 }
+                // 站点名给顶栏用
+                if let info = try? await Api.publicInfo(), let sn = info.siteName, !sn.isEmpty {
+                    Prefs.shared.siteName = sn
+                }
                 await MainActor.run {
                     app.userName = Prefs.shared.user
+                    app.siteName = Prefs.shared.siteName
                     app.loggedIn = true
                     busy = false
                 }

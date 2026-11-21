@@ -328,3 +328,44 @@ struct SearchResp: Decodable {
     let tmdb: [Card]?
     let collect: [CollectItem]?
 }
+
+struct OkResp: Decodable {
+    let ok: Bool?
+    let on: Bool?
+    let error: String?
+}
+
+struct PublicResp: Decodable {
+    let siteName: String?
+}
+
+extension Api {
+    static func publicInfo() async throws -> PublicResp {
+        try await get("/api/public")
+    }
+
+    // 收藏 / 取消收藏，返回操作后的状态
+    static func toggleFav(_ c: Card) async throws -> Bool {
+        let body: [String: Any] = [
+            "add": [
+                "id": c.idKey,
+                "title": c.title ?? "",
+                "poster": c.posterPath ?? "",
+                "year": c.year?.value ?? "",
+            ]
+        ]
+        let data = try await raw("/api/fav", method: "POST", body: body)
+        let r = try JSONDecoder().decode(OkResp.self, from: data)
+        return r.on ?? false
+    }
+
+    // 观看历史：进播放器时写一条，退出时把进度补上
+    static func postHistory(id: String, title: String, poster: String, year: String,
+                            ep: String, pos: String, dur: String) {
+        let body: [String: Any] = [
+            "id": id, "title": title, "poster": poster, "year": year,
+            "ep": ep, "epTotal": "", "pos": pos, "dur": dur,
+        ]
+        Task { _ = try? await raw("/api/history", method: "POST", body: body) }
+    }
+}

@@ -12,6 +12,8 @@ struct DetailView: View {
     @State private var err = ""
     @State private var playing: Episode?
     @State private var playTitle = ""
+    @State private var faved = false
+    @State private var favBusy = false
 
     struct Line: Identifiable {
         let id = UUID()
@@ -38,16 +40,24 @@ struct DetailView: View {
             closeButton
         }
         .background(Theme.bg.ignoresSafeArea())
-        .task { await load() }
+        .task {
+            await load()
+            if let list = try? await Api.favs() {
+                await MainActor.run { faved = list.contains { $0.idKey == card.idKey } }
+            }
+        }
         .fullScreenCover(item: $playing) { ep in
-            PlayerView(url: ep.url ?? "", title: playTitle)
+            PlayerView(url: ep.url ?? "", title: playTitle,
+                       histId: card.idKey, histTitle: card.title ?? "",
+                       histPoster: card.posterPath ?? "", histYear: card.year?.value ?? "",
+                       epName: ep.name ?? "")
         }
     }
 
     private var backdrop: some View {
         GeometryReader { g in
             ZStack {
-                AsyncImage(url: Api.posterURL(card.poster)) { phase in
+                AsyncImage(url: Api.posterURL(card.posterPath)) { phase in
                     if let img = phase.image {
                         img.resizable().aspectRatio(contentMode: .fill)
                     } else {
@@ -91,7 +101,7 @@ struct DetailView: View {
 
     private var headBlock: some View {
         HStack(alignment: .top, spacing: 20) {
-            AsyncImage(url: Api.posterURL(card.poster)) { phase in
+            AsyncImage(url: Api.posterURL(card.posterPath)) { phase in
                 if let img = phase.image {
                     img.resizable().aspectRatio(contentMode: .fill)
                 } else {
@@ -126,6 +136,18 @@ struct DetailView: View {
                     .buttonStyle(.plain)
                     .disabled(curLine == nil)
                     .opacity(curLine == nil ? 0.5 : 1)
+
+                    Button {
+                        toggleFav()
+                    } label: {
+                        Text(faved ? "★ 已收藏" : "☆ 收藏")
+                            .font(.system(size: 14))
+                            .foregroundColor(faved ? Theme.accentSoft : Theme.fg)
+                            .frame(width: 96, height: 48)
+                            .glassPill()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(favBusy)
                 }
                 .padding(.top, 4)
             }
@@ -264,6 +286,17 @@ struct DetailView: View {
         }
     }
 
+    private func toggleFav() {
+        favBusy = true
+        Task {
+            let on = try? await Api.toggleFav(card)
+            await MainActor.run {
+                favBusy = false
+                if let v = on { faved = v }
+            }
+        }
+    }
+
     private func playFirst() {
         guard let l = curLine, let first = l.eps.first else { return }
         playTitle = "\(card.title ?? "") · \(first.name ?? "")"
@@ -275,6 +308,12 @@ struct DetailView: View {
 struct PlayerView: View {
     let url: String
     let title: String
+    var histId: String = ""
+    var histTitle: String = ""
+    var histPoster: String = ""
+    var histYear: String = ""
+    var epName: String = ""
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var player: AVPlayer?
@@ -328,9 +367,24 @@ struct PlayerView: View {
             }
         }
         .onTapGesture { showBar.toggle() }
-        .onAppear { start() }
-        .onDisappear { player?.pause() }
+        .onAppear {
+            start()
+            // 进播放器就记一条历史，退出时再补进度
+            report(pos: 0, dur: 0)
+        }
+        .onDisappear {
+            let t = player?.currentTime().seconds ?? 0
+            let d = player?.currentItem?.duration.seconds ?? 0
+            player?.pause()
+            report(pos: t.isFinite ? Int(t) : 0, dur: d.isFinite ? Int(d) : 0)
+        }
         .statusBar(hidden: true)
+    }
+
+    private func report(pos: Int, dur: Int) {
+        guard !histId.isEmpty else { return }
+        Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
+                        ep: epName, pos: "\(pos)", dur: "\(dur)")
     }
 
     private func start() {
