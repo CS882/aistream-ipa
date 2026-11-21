@@ -16,7 +16,7 @@
  */
 import { bus, EVT } from '../core/events.js';
 import { getSetting } from '../core/settings.js';
-import { getToken, gatewayBase, resolveUpToken, fetchUpDetail } from '../core/datasource.js';
+import { getToken, gatewayBase, resolveUpToken, fetchUpDetail, adPreview, m3u8FilterUrl } from '../core/datasource.js';
 import { escapeHTML } from './content.js';
 
 const e = escapeHTML;
@@ -489,13 +489,25 @@ async function playIndex(i, { auto = false } = {}) {
     }
   }
   if (!url) { autoSwitch('该集没有播放地址'); return; }
+  // 广告过滤（官方客户端同款）：采集站 m3u8 先让服务端按后台规则分析，
+  // 命中插播广告则改用服务端改写后的清单（切片仍为源站直链，不占上行）。
+  let playUrl = url;
+  if (isM3u8(url) && getSetting('adFilter') !== false) {
+    try {
+      const ap = await adPreview(url);
+      if (ap.ok && (ap.blocked > 0 || ap.discAd > 0)) {
+        playUrl = m3u8FilterUrl(url);
+        showTip(`已过滤 ${ap.blocked + ap.discAd} 段插播广告`);
+      }
+    } catch { /* 分析失败不影响正常播放 */ }
+  }
   clearError();
   titleEl.textContent = `${playState.title || '播放'} · ${list[playState.index].name || ('第 ' + (playState.index + 1) + ' 集')}`;
   renderEpisodes();
   try {
-    await ensureVendor(url);
+    await ensureVendor(playUrl);
     if (!playState.open || token !== playState.playToken) return;
-    await createArt(url);
+    await createArt(playUrl);
     if (token !== playState.playToken) { destroyArt(); return; }
     scheduleWaitTimeout();
   } catch (err) {
