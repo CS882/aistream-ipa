@@ -134,9 +134,34 @@ function pointsCard(d) {
     ['今日签到', ck.today ? '已签到' : '未签到'],
   ];
   if (inv.code) rows.push(['邀请码', String(inv.code)]);
+  const signed = !!ck.today;
   return `<div class="points-card">
     <div class="points-card__num"><b>${e(String(d.points ?? 0))}</b><span>我的积分</span></div>
+    <div class="points-actions">
+      <button class="btn-primary btn-mini" data-action="checkin" ${signed ? 'disabled' : ''} data-focusable="1" data-zone="row">${signed ? '今日已签到' : '每日签到 +积分'}</button>
+      <button class="btn-ghost btn-mini" data-action="open-redeem" data-focusable="1" data-zone="row">兑换中心</button>
+      ${inv.code ? `<button class="btn-ghost btn-mini" data-action="copy-invite" data-code="${e(String(inv.code))}" data-focusable="1" data-zone="row">复制邀请码</button>` : ''}
+    </div>
     <div class="extra-kv">${rows.map(([k, v]) => `<div><b>${e(k)}</b><span>${e(String(v))}</span></div>`).join('')}</div>
+  </div>`;
+}
+
+/** 兑换中心：对齐官方原生客户端的积分兑换（列出可兑项 + 我的兑换） */
+function redeemCard(d) {
+  if (!d || typeof d !== 'object') return `<div class="detail__notice">暂无兑换信息</div>`;
+  if (d.enabled === false) return `<div class="detail__notice">该站点未开启兑换功能</div>`;
+  const items = Array.isArray(d.items) ? d.items : [];
+  const me = Array.isArray(d.me?.items || d.me) ? (d.me.items || d.me) : [];
+  return `<div class="redeem-card">
+    ${items.length ? `<div class="redeem-grid">${items.map((it) => {
+      const id = it.id ?? it.key ?? it.code ?? '';
+      const name = it.name || it.title || String(id);
+      const cost = it.cost ?? it.points ?? it.price ?? '';
+      return `<div class="redeem-item">
+        <div><b>${e(String(name))}</b>${cost !== '' ? `<span>${e(String(cost))} 积分</span>` : ''}</div>
+        <button class="btn-primary btn-mini" data-action="redeem" data-id="${e(String(id))}" data-focusable="1" data-zone="row">兑换</button>
+      </div>`;
+    }).join('')}</div>` : `<div class="detail__notice">暂无可兑换项目</div>`}
   </div>`;
 }
 
@@ -165,6 +190,7 @@ export function extraResult(state) {
   if (x.loading) return head + `<div class="detail__notice">正在读取内容源数据…</div>` + end;
   if (x.ok === false) return head + `<div class="detail__notice">${e(x.error || '暂不可用，可能需要在主站开通')}</div>` + end;
   if (x.kind === 'points') return head + pointsCard(x.points) + end;
+  if (x.kind === 'redeem') return head + redeemCard(x) + end;
   if (x.kind === 'weekly') return head + weeklyCard(x.days) + end;
   if (x.kind === 'items') {
     return head + ((x.items && x.items.length)
