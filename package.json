@@ -21,7 +21,7 @@
   "build": {
     "productName": "AIStream 影视",
     "directories": {
-      "output": "dist-win",
+      "output": "dist-win-feat",
       "buildResources": "build"
     },
     "files": [
