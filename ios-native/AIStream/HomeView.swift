@@ -162,23 +162,16 @@ struct HomeView: View {
     }
 }
 
-// 海报卡：118 宽、12 圆角、两行标题 + 评分（与 Android 版一致）
+// 海报卡：默认 118 宽（首页横排），传 fixedWidth: nil 就跟随父容器（分类页网格）
 struct PosterCard: View {
     let card: Card
+    var fixedWidth: CGFloat? = 118
     let tap: () -> Void
 
     var body: some View {
         Button(action: tap) {
             VStack(alignment: .leading, spacing: 0) {
-                AsyncImage(url: Api.posterURL(card.poster)) { phase in
-                    if let img = phase.image {
-                        img.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        Theme.card
-                    }
-                }
-                .frame(width: 118, height: 171)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                poster
 
                 Text(card.title ?? "")
                     .font(.system(size: 11))
@@ -188,17 +181,37 @@ struct PosterCard: View {
                     .frame(height: 30, alignment: .topLeading)
                     .padding(.top, 7)
 
-                if !card.scoreText.isEmpty {
-                    Text(card.scoreText)
-                        .font(.system(size: 10))
-                        .foregroundColor(Theme.fgWeak)
-                }
+                Text(card.scoreText)
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.fgWeak)
+                    .frame(height: 14, alignment: .topLeading)
             }
-            .frame(width: 118)
-            .padding(.horizontal, 5)
-            .padding(.bottom, 12)
+            .frame(width: fixedWidth)
         }
         .buttonStyle(PressScaleStyle())
+    }
+
+    /* 宽度由外部决定（118 或网格列宽），高度按 118:171 算出来 ——
+       绝对不能写死 frame(width: 118)，否则放进网格会溢出列宽、文字互相叠。 */
+    private var poster: some View {
+        Rectangle()
+            .fill(Theme.card)
+            .aspectRatio(118.0 / 171.0, contentMode: .fit)
+            .overlay(
+                GeometryReader { g in
+                    AsyncImage(url: Api.posterURL(card.poster)) { phase in
+                        if let img = phase.image {
+                            img.resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: g.size.width, height: g.size.height)
+                                .clipped()
+                        } else {
+                            Theme.card
+                        }
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

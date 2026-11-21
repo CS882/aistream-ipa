@@ -141,9 +141,13 @@ struct CatalogView: View {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 6), spacing: 0) {
+                    // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
+                        spacing: 14
+                    ) {
                         ForEach(shown) { c in
-                            PosterCard(card: c) { pick = c }
+                            PosterCard(card: c, fixedWidth: nil) { pick = c }
                         }
                     }
                     .padding(.horizontal, 16)
