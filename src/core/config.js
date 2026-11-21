@@ -71,12 +71,14 @@ export const CHANNELS = Object.freeze([
  * view 决定界面渲染形态，避免把原始 JSON 键值摊开显示。
  *   items  → {items:[{id,title,poster...}]} 影视卡片
  *   points → {points,vip,checkin,invite,cfg,growth,daily} 会员信息
+ *   redeem → {enabled,items,me} 兑换中心（官方客户端同款）
  *   weekly → {days:[...]} 追剧周片单
  *   iptv   → {enabled,channels:[{cid,name,group,logo}],now} 直播频道
  */
 export const QUICK_ENTRIES = Object.freeze([
   { id: 'weekly', label: '我的追剧', icon: 'rank', api: 'api/weekly', view: 'weekly' },
   { id: 'points', label: '积分中心', icon: 'mine', api: 'api/points/me', view: 'points' },
+  { id: 'redeem', label: '兑换中心', icon: 'gift', api: 'api/redeem', view: 'redeem' },
   { id: 'reserve', label: '我的预约', icon: 'info', api: 'api/preview/reserved', view: 'items' },
   { id: 'history', label: '历史记录', icon: 'back', api: 'api/history', view: 'items' },
   { id: 'fav', label: '我的收藏', icon: 'play', api: 'api/fav', view: 'items' },
@@ -117,6 +119,7 @@ export const ICONS = Object.freeze({
   back: '<path d="M15 5l-7 7 7 7"/>',
   arrow: '<path d="M9 5l7 7-7 7"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.2"/>',
+  gift: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12"/><path d="M3 13h18"/><path d="M12 9C9 9 7 8 7 6a2 2 0 0 1 4 0c1 2 1 3 1 3zm0 0c3 0 5-1 5-3a2 2 0 0 0-4 0c-1 2-1 3-1 3z"/>',
 });
 
 export function icon(name, size = 24) {
