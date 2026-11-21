@@ -261,6 +261,10 @@ root.addEventListener('click', (e) => {
     if (a === 'reset-filter') return store.clearFilter();
     if (a === 'expand-list') return store.expandList();
     if (a === 'retry') return store.refresh({ force: true });
+    if (a === 'checkin') return store.checkin();
+    if (a === 'open-redeem') return store.openExtra('redeem');
+    if (a === 'redeem') return store.redeem(actionBtn.dataset.id);
+    if (a === 'copy-invite') { try { navigator.clipboard?.writeText(actionBtn.dataset.code || ''); store.toast('邀请码已复制'); } catch {} return; }
     if (a === 'play') return store.requestPlay(id || null);
     return store.openDetail(id || null);
   }
