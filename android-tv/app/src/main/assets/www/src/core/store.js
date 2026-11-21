@@ -358,6 +358,32 @@ export async function setMineTab(tabId) {
 /** 收起快捷入口结果 */
 export function clearExtra() { commit({ extra: null }); }
 
+/** 每日签到：成功后刷新积分卡 */
+export async function checkin() {
+  const r = await ds.doCheckin();
+  if (!r.ok) { toast(r.error || '签到失败'); return r; }
+  const gained = Number(r.gained) || 0;
+  toast(r.msg || (gained > 0 ? `签到成功 +${gained}` : '签到成功'));
+  // 刷新积分数据，使「今日签到」变为已签到
+  try {
+    const p = await ds.fetchExtra('points');
+    if (p?.ok) commit({ extra: { ...p, id: 'points', label: '积分中心', loading: false } });
+  } catch { /* ignore */ }
+  return r;
+}
+
+/** 兑换：成功后刷新兑换中心 */
+export async function redeem(id) {
+  const r = await ds.doRedeem(id);
+  if (!r.ok) { toast(r.error || '兑换失败'); return r; }
+  toast('兑换成功');
+  try {
+    const d = await ds.fetchRedeem();
+    if (d?.ok) commit({ extra: { ...d, loading: false } });
+  } catch { /* ignore */ }
+  return r;
+}
+
 /** 筛选页：前端筛选/排序，立即重绘，不请求接口 */
 export function setFilter(patch = {}) {
   commit({ filter: { ...state.filter, ...patch } });
