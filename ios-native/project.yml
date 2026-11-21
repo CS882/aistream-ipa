@@ -1,0 +1,29 @@
+name: AIStream
+options:
+  bundleIdPrefix: com.aistream
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+targets:
+  AIStream:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: AIStream
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aistream.native
+        PRODUCT_NAME: AIStream
+        INFOPLIST_FILE: AIStream/Info.plist
+        MARKETING_VERSION: "1.6.0"
+        CURRENT_PROJECT_VERSION: "17"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"

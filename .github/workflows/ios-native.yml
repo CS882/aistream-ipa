@@ -1,0 +1,81 @@
+# AIStream 原生 iOS（SwiftUI）· 云端构建巨魔 IPA
+# ------------------------------------------------------------------
+# 这是和 Android 原生版同构的 iOS 版本：SwiftUI 重写，不是 Web 套壳。
+# macOS runner 上编译 → ldid 伪签名 → 产出 TrollStore 可直装的 IPA。
+# 不需要 Apple 开发者账号。
+name: Build iOS Native IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios-native/**'
+      - '.github/workflows/ios-native.yml'
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Install XcodeGen & ldid
+        run: |
+          brew install xcodegen ldid
+
+      - name: Generate Xcode project
+        run: |
+          cd ios-native
+          xcodegen generate
+          ls -la
+
+      - name: Build (unsigned)
+        run: |
+          cd ios-native
+          xcodebuild \
+            -project AIStream.xcodeproj \
+            -scheme AIStream \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_STYLE=Manual \
+            build
+
+      - name: Fakesign + package IPA
+        run: |
+          set -euo pipefail
+          APP=$(find ios-native/build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' | head -n 1)
+          echo "App: $APP"
+          ENT=ios-native/trollstore.entitlements.plist
+          STAGE=build/ipa-stage
+          rm -rf "$STAGE" && mkdir -p "$STAGE/Payload" dist/ipa
+          cp -R "$APP" "$STAGE/Payload/"
+
+          APPNAME=$(basename "$APP" .app)
+          ldid -S"$ENT" "$STAGE/Payload/$APPNAME.app/$APPNAME"
+          find "$STAGE/Payload/$APPNAME.app" -type f \( -name '*.dylib' -o -path '*/Frameworks/*' \) -print0 2>/dev/null \
+            | while IFS= read -r -d '' f; do
+                if file "$f" | grep -q 'Mach-O'; then ldid -S"$ENT" "$f" || true; fi
+              done
+
+          cd "$STAGE" && zip -qry "../../dist/ipa/AIStream-Native-TrollStore.ipa" Payload
+          cd ../..
+          ls -lh dist/ipa/
+          unzip -l dist/ipa/AIStream-Native-TrollStore.ipa | head -20
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIStream-Native-IPA
+          path: dist/ipa/AIStream-Native-TrollStore.ipa
+          if-no-files-found: error
