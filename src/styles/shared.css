@@ -871,3 +871,17 @@ html[data-platform="mobile"] .platform-switch { bottom: 84px; }
 /* 隐藏 ArtPlayer 自带的错误/加载遮罩，避免透过自绘错误框 */
 .ais-player .art-error, .ais-player .art-loading, .ais-player .art-mask { display: none !important; }
 .ais-player__error { background: #12101e; }
+
+/* ===== 会员权益：签到 / 兑换 / 邀请（对齐官方客户端，沿用我们的配色） ===== */
+.points-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 12px; }
+.points-actions .btn-mini { min-height: 30px; }
+.redeem-card { padding: 4px 0; }
+.redeem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.redeem-item { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+.redeem-item > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.redeem-item b { font-size: 13px; color: var(--text-1); }
+.redeem-item span { font-size: 11px; color: #c9b6ff; }
+/* EPG：直播频道卡片显示当前节目 */
+.poster__epg { color: #c9b6ff; font-size: 11px; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
