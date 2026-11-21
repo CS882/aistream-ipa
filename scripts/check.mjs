@@ -402,6 +402,32 @@ const plSrc = read('src/components/player.js');
   ? ok('播放器对齐官方', '顶栏倍速/投屏/更多 + 横竖屏/跳过胶囊 + 原生HLS优先内核，UI保持自有风格')
   : bad('播放器对齐官方', '播放器布局或内核未对齐');
 
+// 本轮：播放页地址解析（修复"影片不能播放"——采集站给 HTML 播放页，需抠出真实 m3u8）
+(plSrc.includes('resolvePlayUrl') && plSrc.includes('extractPlayable')
+  && plSrc.includes('RX_M3U8') && plSrc.includes('正在解析播放地址'))
+  ? ok('播放页地址解析', '采集站 HTML 播放页自动抠出真实 m3u8/mp4，修复影片无法播放')
+  : bad('播放页地址解析', '缺少播放页地址解析，HTML 播放页将无法播放');
+
+// 本轮：聚合播放自动测速选源
+(plSrc.includes('speedTestLines') && plSrc.includes('measureLine')
+  && plSrc.includes('data-pact="speedtest"') && plSrc.includes('lineSpeed'))
+  ? ok('聚合播放测速', '多线路并发测速、按延迟排序、自动切换最快源并显示延迟')
+  : bad('聚合播放测速', '缺少线路测速选源功能');
+
+// 本轮：片源/站点筛选分类
+const fsrc = read('src/components/filters.js');
+(fsrc.includes('stationOptions') && fsrc.includes('filter.station')
+  && fsrc.includes("data-filter=\"station\""))
+  ? ok('片源筛选分类', '从内容提取真实站点按数量排序，可按片源筛选（原版按站点分组线路同款）')
+  : bad('片源筛选分类', '缺少片源筛选维度');
+
+// 本轮：Apple TV 风格播放器视觉
+const cssSrc = read('src/styles/shared.css');
+(cssSrc.includes('Apple TV 风格播放器视觉升级') && cssSrc.includes('backdrop-filter: blur')
+  && cssSrc.includes('ais-player__hbtn:hover'))
+  ? ok('Apple TV风格UI', '毛玻璃悬浮控制条 + 胶囊按钮 + 聚焦光晕 + 紫色进度条')
+  : bad('Apple TV风格UI', '播放器视觉未升级');
+
 /* 输出 */
 console.log('\n  AIStream 影视 · 交付自检');
 console.log('  ─────────────────────────────────────────────');
