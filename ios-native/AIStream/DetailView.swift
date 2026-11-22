@@ -434,7 +434,7 @@ struct PlayerView: View {
     @State private var timeObserver: Any?
     @State private var seeking = false
     // 画中画
-    @ObservedObject private var pip = PipManager.shared
+    @StateObject private var pip = PipManager()
 
     // 缩放 4 档（全屏也是缩放的一种）：0=适应 1=拉伸 2=裁剪 3=全屏(裁剪+隐藏UI)
     @State private var scaleIdx = 0
@@ -481,7 +481,8 @@ struct PlayerView: View {
                         onSwipeBack: {
                             cancelPress()   // 先停掉可能正在进行的快进
                             dismiss()
-                        }
+                        },
+                        pip: pip
                     )
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
@@ -928,76 +929,75 @@ struct PlayerView: View {
 }
 
 // 画中画管理器：全局单例持有 controller，SwiftUI 和 UIView 都能直接调用
+/* 画中画管理器：每个播放器持有一个独立实例（不再用单例）。
+   单例会导致 controller 绑死在第一个 AVPlayerLayer 上，
+   换片源后 isPictureInPicturePossible 永久 false —— "看过一次就再也打不开"。 */
 final class PipManager: NSObject, ObservableObject {
-    static let shared = PipManager()
     @Published var possible = false
     @Published var active = false
     @Published var diag = ""
+
     private var controller: AVPictureInPictureController?
     private weak var layer: AVPlayerLayer?
     private var readyKVO: NSKeyValueObservation?
     private var possibleKVO: NSKeyValueObservation?
+    private var pending = false
+    private var built = false
 
-    /* 用 KVO 监听 isReadyForDisplay / isPictureInPicturePossible，
-       替代原来的 0.3s 轮询 —— 视频一就绪立刻建 controller，点按钮即响应。 */
+    /// 绑定视频层。可重复调用（updateUIView 会多次触发），幂等。
     func attach(_ playerLayer: AVPlayerLayer) {
-        if layer !== playerLayer {
-            controller?.delegate = nil
-            controller = nil
-            readyKVO?.invalidate(); readyKVO = nil
-            possibleKVO?.invalidate(); possibleKVO = nil
-            layer = playerLayer
-        }
-        diag = ""
+        layer = playerLayer
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
             diag = "设备不支持画中画"
             return
         }
-        // controller 早建（不等 ready）：延迟到下一轮 RunLoop，
-        // 确保 layer 已加入 window（AVPictureInPictureController 需要）
-        if controller == nil {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self, self.controller == nil else { return }
-                guard let c = AVPictureInPictureController(playerLayer: playerLayer) else { return }
-                c.delegate = self
-                self.controller = c
-                self.possibleKVO = c.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] _, ch in
-                    DispatchQueue.main.async {
-                        self?.possible = ch.newValue ?? false
-                        if ch.newValue == true {
-                            self?.diag = ""
-                            self?.tryStartIfPending()
-                        }
+        if !built {
+            buildController(playerLayer)
+        }
+        if readyKVO == nil {
+            readyKVO = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] _, ch in
+                guard ch.newValue == true else { return }
+                DispatchQueue.main.async { self?.flushPending() }
+            }
+        }
+        if playerLayer.isReadyForDisplay { flushPending() }
+    }
+
+    private func buildController(_ playerLayer: AVPlayerLayer) {
+        built = true
+        // 延迟一轮 RunLoop：确保 layer 已加入 window，否则初始化直接返回 nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.controller == nil else { return }
+            guard let c = AVPictureInPictureController(playerLayer: playerLayer) else {
+                self.built = false      // 允许下次 attach 重试
+                return
+            }
+            c.delegate = self
+            self.controller = c
+            self.possibleKVO = c.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] _, ch in
+                DispatchQueue.main.async {
+                    self?.possible = ch.newValue ?? false
+                    if ch.newValue == true {
+                        self?.diag = ""
+                        self?.flushPending()
                     }
                 }
             }
         }
-        // ready 后就尝试启动（如果用户已经点过）
-        if readyKVO == nil {
-            readyKVO = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] _, ch in
-                guard ch.newValue == true else { return }
-                DispatchQueue.main.async { self?.tryStartIfPending() }
-            }
-        }
-        if playerLayer.isReadyForDisplay { tryStartIfPending() }
     }
 
-    private var pending = false
-    private func tryStartIfPending() {
-        guard pending, let c = controller, c.isPictureInPicturePossible, !c.isPictureInPictureActive else { return }
+    private func flushPending() {
+        guard pending, let c = controller,
+              c.isPictureInPicturePossible, !c.isPictureInPictureActive else { return }
         pending = false
         c.startPictureInPicture()
     }
 
     func toggle() {
-        // 没建好就现场重建一次（应对 attach 时机太早的情况）
-        if controller == nil, let l = layer,
-           let c = AVPictureInPictureController(playerLayer: l) {
-            c.delegate = self
-            controller = c
-        }
+        // 没建好就现场补建（应对 attach 时机过早）
+        if controller == nil, let l = layer { buildController(l) }
         guard let c = controller else {
-            diag = "画中画还在初始化，稍等一秒再点"
+            diag = "画中画初始化中，稍等再点"
             return
         }
         if c.isPictureInPictureActive {
@@ -1008,26 +1008,28 @@ final class PipManager: NSObject, ObservableObject {
             diag = ""
             c.startPictureInPicture()
         } else {
-            // 记下意图，等 possible 变 true 立刻启动（KVO 会回调）
             pending = true
             diag = "正在准备画中画…"
         }
+    }
+
+    deinit {
+        readyKVO?.invalidate()
+        possibleKVO?.invalidate()
+        controller?.delegate = nil
     }
 }
 
 extension PipManager: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
-        active = true
-        pending = false
-        diag = ""
+        active = true; pending = false; diag = ""
     }
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
         active = false
     }
     func pictureInPictureController(_ c: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
-        active = false
-        pending = false
+        active = false; pending = false
         diag = "画中画失败：\(error.localizedDescription)"
     }
 }
@@ -1041,6 +1043,8 @@ final class PlayerUIView: UIView {
     var gravity: AVLayerVideoGravity = .resizeAspect {
         didSet { playerLayer.videoGravity = gravity }
     }
+
+    weak var pip: PipManager?          // 由 PlayerLayerView 注入的独立实例
 
     // 手势回调（由 SwiftUI 注入）
     var onTap: () -> Void = {}
@@ -1086,10 +1090,14 @@ final class PlayerUIView: UIView {
         swipe.delegate = self
         addGestureRecognizer(swipe)
 
-        // 画中画：把 AVPlayerLayer 交给全局 PipManager 持有 controller
-        PipManager.shared.attach(playerLayer)
+        // 画中画的 attach 由 PlayerLayerView 注入 pip 后调用（见 attachPip）
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func attachPip(_ m: PipManager) {
+        pip = m
+        m.attach(playerLayer)
+    }
 
     @objc private func handleTap() { onTap() }
 
@@ -1146,15 +1154,18 @@ struct PlayerLayerView: UIViewRepresentable {
     var onCancelPress: () -> Void = {}
     var onPinch: (CGFloat) -> Void = { _ in }
     var onSwipeBack: () -> Void = {}
+    var pip: PipManager?
 
     func makeUIView(context: Context) -> PlayerUIView {
         let v = PlayerUIView(player: player)
+        if let m = pip { v.attachPip(m) }
         v.onTap = onTap
         v.onPressBegin = onPressBegin
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress
         v.onPinch = onPinch
         v.onSwipeBack = onSwipeBack
+        if let m = pip { v.attachPip(m) }
         return v
     }
     func updateUIView(_ v: PlayerUIView, context: Context) {
