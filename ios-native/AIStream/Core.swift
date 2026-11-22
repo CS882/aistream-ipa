@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 // MARK: - 本地存储
 final class Prefs {
@@ -588,5 +589,23 @@ struct LineSpeed {
 extension Api {
     static var UA: String {
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"
+    }
+}
+
+// MARK: - 音频会话（PiP 硬性前置条件）
+// Apple 要求使用画中画必须配置后台音频播放；
+// 不设置 AVAudioSession 会导致 isPictureInPicturePossible 一直为 false。
+enum AudioSessionManager {
+    static func activateForPlayback() {
+        do {
+            let s = AVAudioSession.sharedInstance()
+            // PiP 标准配置：.playback 类别，不指定 mode（Apple 官方示例）
+            try s.setCategory(.playback, mode: .default,
+                              options: [.allowAirPlay, .allowBluetooth])
+            try s.setActive(true, options: [])
+        } catch {
+            // 音频会话失败不阻断播放，但 PiP 可能不可用
+            print("AVAudioSession 配置失败: \(error.localizedDescription)")
+        }
     }
 }

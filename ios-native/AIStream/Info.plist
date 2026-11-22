@@ -32,6 +32,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>pictureInPicture</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

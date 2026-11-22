@@ -736,6 +736,8 @@ struct PlayerView: View {
 
     // MARK: 播放控制
     private func start() {
+        // PiP 硬性前置：先激活后台音频会话（Apple 文档要求）
+        AudioSessionManager.activateForPlayback()
         // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
         let avItem: AVPlayerItem
         if useAuth, let req = Api.iptvStreamRequest(cid: streamCid), let u = req.url {
@@ -919,6 +921,7 @@ final class PipManager: NSObject, ObservableObject {
     private var controller: AVPictureInPictureController?
     private weak var layer: AVPlayerLayer?
     private var waiting = false
+    private var possibleKVO: NSKeyValueObservation?
 
     func attach(_ playerLayer: AVPlayerLayer) {
         layer = playerLayer
@@ -962,17 +965,12 @@ final class PipManager: NSObject, ObservableObject {
             }
         }
         possible = controller != nil
-        // 再等 possible 变 true（视频起播后系统才允许）
-        waitPossible(0)
-    }
-
-    private func waitPossible(_ n: Int) {
-        guard n < 20, let c = controller else { return }
-        if c.isPictureInPicturePossible {
-            diag = ""
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.waitPossible(n + 1)
+        // KVO 监听 possible（Apple 官方推荐），变更时清掉诊断
+        possibleKVO?.invalidate()
+        possibleKVO = controller?.observe(\.isPictureInPicturePossible, options: [.initial, .new]) {
+            [weak self] _, change in
+            if change.newValue == true {
+                DispatchQueue.main.async { self?.diag = "" }
             }
         }
     }
