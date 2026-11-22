@@ -629,8 +629,12 @@ struct PlayerView: View {
     private func start() {
         // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
         let avItem: AVPlayerItem
-        if useAuth, let req = Api.iptvStreamRequest(cid: streamCid) {
-            avItem = AVPlayerItem(urlRequest: req)
+        if useAuth, let req = Api.iptvStreamRequest(cid: streamCid), let u = req.url {
+            // AVPlayerItem 没有 urlRequest 初始化器；用 AVURLAsset 的 options 带 token
+            var opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": req.allHTTPHeaderFields ?? [:]]
+            opts["AVURLAssetAllowsCellularAccessKey"] = true
+            let asset = AVURLAsset(url: u, options: opts)
+            avItem = AVPlayerItem(asset: asset)
         } else {
             guard let u = URL(string: url) else { playFailed = true; return }
             avItem = AVPlayerItem(url: u)
