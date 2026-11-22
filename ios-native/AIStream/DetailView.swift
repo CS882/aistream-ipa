@@ -181,7 +181,9 @@ struct DetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
-                        FilterChip(text: "\(l.station) · \(l.from)", on: i == lineIdx) {
+                        FilterChip(text: DetailView.isDirect(l.eps.first?.url ?? "")
+                            ? "\(l.station) · \(l.from)"
+                            : "\(l.station) · \(l.from)(需解析)", on: i == lineIdx) {
                             lineIdx = i
                         }
                     }
@@ -267,7 +269,11 @@ struct DetailView: View {
                     }
                 }
             }
-            let built = order.compactMap { byKey[$0] }
+            // 直链（m3u8/mp4）排前面，网页解析线路排后面 —— iOS 只能播直链，
+            // 用户默认点到第一条就是能播的，不会一进来就黑屏
+            let built = order.compactMap { byKey[$0] }.sorted { a, b in
+                DetailView.isDirect(a.eps.first?.url ?? "") && !DetailView.isDirect(b.eps.first?.url ?? "")
+            }
             let d = results.first(where: { $0.detail != nil })?.detail
 
             await MainActor.run {
@@ -297,6 +303,11 @@ struct DetailView: View {
         }
     }
 
+    static func isDirect(_ url: String) -> Bool {
+        let u = url.lowercased()
+        return u.contains(".m3u8") || u.contains(".mp4") || u.hasSuffix(".ts")
+    }
+
     private func playFirst() {
         guard let l = curLine, let first = l.eps.first else { return }
         playTitle = "\(card.title ?? "") · \(first.name ?? "")"
@@ -320,6 +331,8 @@ struct PlayerView: View {
     @State private var showBar = true
     @State private var hideWork: DispatchWorkItem?
     @State private var isPlaying = true
+    @State private var playFailed = false
+    @State private var statusObserver: NSObjectProtocol?
 
     // 缩放：0=适应 1=拉伸 2=裁剪铺满
     @State private var scaleIdx = 0
@@ -337,59 +350,108 @@ struct PlayerView: View {
     @State private var pressSide = 0   // -1 左（快退） 1 右（快进）
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        /* 用两层 ZStack 各自顶部/底部对齐：返回栏和工具栏只占自身高度，
+           中间视频区完全暴露给手势 —— 不再用铺满全屏的 VStack + Spacer，
+           那会拦截触摸导致"点屏幕没反应、返回按钮点不到"。 */
+        ZStack(alignment: .bottom) {
+            ZStack(alignment: .top) {
+                Color.black.ignoresSafeArea()
 
-            if let p = player {
-                PlayerLayerView(player: p, scaleIdx: $scaleIdx)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    // 左右半屏按压：按住持续快进/快退，松开恢复
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { v in
-                                if pressSide == 0 { beginPress(at: v.startLocation.x) }
-                            }
-                            .onEnded { _ in endPress() }
+                if let p = player, !playFailed {
+                    PlayerLayerView(player: p, scaleIdx: $scaleIdx)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { v in
+                                    if pressSide == 0 { beginPress(at: v.startLocation.x) }
+                                }
+                                .onEnded { _ in endPress() }
+                        )
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "play.slash").font(.system(size: 34)).foregroundColor(.white.opacity(0.5))
+                        Text(playFailed ? "这条线路播不了，换一条 m3u8 直链" : "正在加载…")
+                            .font(.system(size: 14)).foregroundColor(.white)
+                        if playFailed {
+                            Text("返回上一页换线路，网页解析线路 iOS 不支持")
+                                .font(.system(size: 12)).foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                }
+
+                // 顶部渐变：纯装饰，不拦触摸
+                if showBar {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.85), location: 0),
+                            .init(color: .black.opacity(0.45), location: 0.45),
+                            .init(color: .black.opacity(0), location: 1)
+                        ],
+                        startPoint: .top, endPoint: .bottom
                     )
-            } else {
-                VStack(spacing: 8) {
-                    Text("这条线路的地址不是标准视频流")
-                        .font(.system(size: 14)).foregroundColor(.white)
-                    Text("iOS 版暂不支持网页解析线路，换一条 m3u8 线路试试")
-                        .font(.system(size: 12)).foregroundColor(.white.opacity(0.6))
+                    .frame(height: 170)
+                    .allowsHitTesting(false)
+                }
+
+                // 返回按钮始终可见（不随 showBar 隐藏），标题只在控制层显示时出现
+                HStack(spacing: 10) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.black.opacity(0.35)))
+                    }
+                    .buttonStyle(.plain)
+
+                    if showBar {
+                        Text(title)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+
+                // 快进快退提示
+                if !seekHint.isEmpty {
+                    Text(seekHint)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(radius: 8)
+                        .transition(.scale.combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
+
+                if showMenu {
+                    Color.black.opacity(0.5)
+                        .onTapGesture { showMenu = false }
+                    menuPanel
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
 
-            // 快进快退提示浮层
-            if !seekHint.isEmpty {
-                Text(seekHint)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.white)
-                    .shadow(radius: 8)
-                    .transition(.scale.combined(with: .opacity))
-                    .allowsHitTesting(false)
-            }
-
+            // 底部工具栏：只占自身高度，放在最底部
             if showBar {
-                controlLayer
-                    .transition(.opacity)
-            }
-
-            if showMenu {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .onTapGesture { showMenu = false }
-                menuPanel
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                HStack(spacing: 22) {
+                    barButton("gobackward.10", "快退") { nudge(-10) }
+                    barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
+                    barButton("goforward.10", "快进") { nudge(10) }
+                    barButton("slider.horizontal.3", "设置") { showMenu = true }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Capsule().fill(Color.black.opacity(0.45)))
+                .padding(.bottom, 24)
+                .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.18), value: showBar)
         .animation(.easeOut(duration: 0.2), value: showMenu)
-        .onAppear {
-            start()
-            scheduleHide()
-        }
+        .onAppear { start(); scheduleHide() }
         .onDisappear {
             hideWork?.cancel()
             stopSeek()
@@ -399,64 +461,7 @@ struct PlayerView: View {
             report(pos: t.isFinite ? t : 0, dur: d.isFinite ? d : 0)
         }
         .statusBar(hidden: true)
-        .hideSystemOverlays()   // 隐藏 Home Indicator，达成全屏
-    }
-
-    // MARK: 控制层（顶部渐变 + 标题 + 底部按钮）
-    private var controlLayer: some View {
-        VStack {
-            // 顶部：加高到 170pt + 三段渐变，避免之前 110pt 的硬边
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.white.opacity(0.14)))
-                    }
-                    .buttonStyle(.plain)
-                    .allowsHitTesting(true)
-
-                    Text(title)
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                Spacer()
-            }
-            .frame(height: 170)
-            .allowsHitTesting(false)   // 顶部渐变区不拦触摸，让视频区手势能穿透
-            .background(
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.85), location: 0),
-                        .init(color: .black.opacity(0.45), location: 0.45),
-                        .init(color: .black.opacity(0), location: 1)
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-            .allowsHitTesting(true)
-
-            Spacer()
-
-            // 底部工具栏
-            HStack(spacing: 22) {
-                barButton("gobackward.10", "快退") { nudge(-10) }
-                barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
-                barButton("goforward.10", "快进") { nudge(10) }
-                barButton("slider.horizontal.3", "设置") { showMenu = true }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Capsule().fill(Color.black.opacity(0.45)))
-            .padding(.bottom, 24)
-        }
-        .allowsHitTesting(false)   // 只让里面的按钮响应，空白处手势穿透到视频
+        .hideSystemOverlays()
     }
 
     private func barButton(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -473,7 +478,6 @@ struct PlayerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .allowsHitTesting(true)
     }
 
     // MARK: 弹窗菜单（拆成小视图，避免编译器类型检查超时）
@@ -562,7 +566,7 @@ struct PlayerView: View {
 
     // MARK: 播放控制
     private func start() {
-        guard let u = URL(string: url) else { return }
+        guard let u = URL(string: url) else { playFailed = true; return }
         let p = AVPlayer(url: u)
 
         // 续播：本地有进度且没接近结尾就跳过去
@@ -572,10 +576,17 @@ struct PlayerView: View {
             p.seek(to: t)
         }
 
+        // 观察播放状态：失败时给提示，不再干黑屏
+        statusObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime, object: p.currentItem, queue: .main
+        ) { [weak self] _ in
+            self?.playFailed = true
+        }
         player = p
         p.rate = speed
         p.play()
         isPlaying = true
+        playFailed = false
         // 不要用 report(pos:0) 起步 —— 那会把刚读出来的续播进度覆盖成 0。
         // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
@@ -670,27 +681,40 @@ struct PlayerView: View {
     }
 }
 
-// AVPlayerLayer 容器：通过 gravity 切换适应/拉伸/裁剪
+/* 视频层：必须用自定义 UIView 子类重写 layoutSubviews 更新 AVPlayerLayer.frame。
+   之前用 UIViewRepresentable 直接设 frame=v.bounds，makeUIView 时 bounds 还是 .zero，
+   updateUIView 又只在绑定变化时调用，导致 layer 尺寸一直是 0 → 黑屏。 */
+final class PlayerUIView: UIView {
+    let playerLayer = AVPlayerLayer()
+    var gravity: AVLayerVideoGravity = .resizeAspect {
+        didSet { playerLayer.videoGravity = gravity }
+    }
+
+    init(player: AVPlayer) {
+        super.init(frame: .zero)
+        backgroundColor = .black
+        playerLayer.player = player
+        playerLayer.videoGravity = .resizeAspect
+        layer.addSublayer(playerLayer)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.frame = bounds
+    }
+}
+
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
     @Binding var scaleIdx: Int
 
-    func makeUIView(context: Context) -> UIView {
-        let v = UIView()
-        v.backgroundColor = .black
-        let layer = AVPlayerLayer(player: player)
-        layer.frame = v.bounds
-        layer.videoGravity = gravity(0)
-        v.layer.addSublayer(layer)
-        return v
+    func makeUIView(context: Context) -> PlayerUIView {
+        PlayerUIView(player: player)
     }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        guard let layer = uiView.layer.sublayers?.first as? AVPlayerLayer else { return }
-        layer.frame = uiView.bounds
-        layer.videoGravity = gravity(scaleIdx)
+    func updateUIView(_ v: PlayerUIView, context: Context) {
+        v.gravity = gravity(scaleIdx)
     }
-
     private func gravity(_ idx: Int) -> AVLayerVideoGravity {
         switch idx {
         case 1: return .resize
