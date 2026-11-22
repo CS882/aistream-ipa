@@ -252,18 +252,24 @@ struct DetailView: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundColor(Theme.fg)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
-                ForEach(Array((curLine?.eps ?? []).enumerated()), id: \.offset) { _, ep in
+            /* 自适应列数：每格至少 56pt，保证"第01集"这类集名完整显示。
+               之前写死 8 列，iPhone 竖屏每列才 38pt，文字被截成"第..."。 */
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 56, maximum: 90), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(Array((curLine?.eps ?? []).enumerated()), id: \.offset) { idx, ep in
                     Button {
                         playTitle = "\(card.title ?? "") · \(ep.name ?? "")"
                         playing = ep
                     } label: {
-                        Text(ep.name ?? "-")
+                        Text(ep.name?.isEmpty == false ? ep.name! : "第\(idx + 1)集")
                             .font(.system(size: 12))
                             .foregroundColor(Theme.fgDim)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 34)
+                            .frame(height: 36)
                             .background(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(Color.white.opacity(0.06))
