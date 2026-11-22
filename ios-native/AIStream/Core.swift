@@ -103,7 +103,10 @@ struct Card: Decodable, Identifiable {
     let station: String?
     // 历史接口会带进度；普通 catalog/home 没有这些字段，所以都是可选
     // 给默认值，这样搜索/收藏构造 Card 时不用每个都传
-    var ep: String? = nil
+    // ep 服务端有时是"HD国语"字符串，有时是数字 0 —— 必须 FlexStr，
+    // 否则整条 Card 解码失败，[Card] 数组会整批变空（观看历史一直空就是这原因）
+    var ep: FlexStr? = nil
+    var epTotal: FlexStr? = nil
     var pos: FlexStr? = nil
     var dur: FlexStr? = nil
     var t: FlexStr? = nil
@@ -112,7 +115,7 @@ struct Card: Decodable, Identifiable {
         case rawId = "id"
         case title, poster, year, score, media, station
         case posterUrl = "poster_url"
-        case ep, pos, dur, t
+        case ep, epTotal, pos, dur, t
     }
 
     // 统一出口：谁有就用谁，调用方不用关心数据来自哪个接口

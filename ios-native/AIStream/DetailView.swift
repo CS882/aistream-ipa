@@ -404,6 +404,14 @@ struct PlayerView: View {
                                 }
                                 .onEnded { _ in endPress() }
                         )
+                        // 双指撑开 → 进全屏；捏合 → 退出
+                        .simultaneousGesture(
+                            MagnificationGesture()
+                                .onEnded { value in
+                                    if value > 1.3 && !forcedLandscape { toggleFullscreen() }
+                                    else if value < 0.7 && forcedLandscape { toggleFullscreen() }
+                                }
+                        )
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "play.slash").font(.system(size: 34)).foregroundColor(.white.opacity(0.5))
@@ -474,13 +482,37 @@ struct PlayerView: View {
             if showBar {
                 VStack(spacing: 10) {
                     // 进度条：可拖动跳转，显示当前/总时长
-                    VStack(spacing: 4) {
-                        Slider(value: $progress, in: 0...max(1, duration), step: 1) { changed in
-                            seeking = !changed
-                            if !changed { seek(to: progress) }
+                    VStack(spacing: 6) {
+                        // 自定义进度条：点/拖任意位置都能跳转
+                        GeometryReader { geo in
+                            let ratio = duration > 0 ? min(1, max(0, progress / duration)) : 0
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.25)).frame(height: 5)
+                                Capsule().fill(Theme.accentSoft)
+                                    .frame(width: max(0, geo.size.width * CGFloat(ratio)), height: 5)
+                                Circle().fill(.white).frame(width: 12, height: 12)
+                                    .offset(x: max(0, geo.size.width * CGFloat(ratio) - 6))
+                            }
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { g in
+                                        seeking = true
+                                        let r = min(1, max(0, g.location.x / geo.size.width))
+                                        progress = Double(r) * duration
+                                    }
+                                    .onEnded { g in
+                                        let r = min(1, max(0, g.location.x / geo.size.width))
+                                        let t = Double(r) * duration
+                                        progress = t
+                                        seek(to: t)
+                                        seeking = false
+                                        scheduleHide()
+                                    }
+                            )
                         }
-                        .tint(Theme.accentSoft)
-                        .padding(.horizontal, 4)
+                        .frame(height: 16)
+
                         HStack {
                             Text(fmtTime(progress)).font(.system(size: 10)).foregroundColor(.white.opacity(0.7))
                             Spacer()
@@ -772,29 +804,33 @@ struct PlayerView: View {
     // 画中画：iOS 15+，需要视频层用 AVPlayerLayer
     private func setupPip() {
         pipPossible = AVPictureInPictureController.isPictureInPictureSupported()
+        // 延迟创建 PiP controller：AVPlayerLayer 要有实际视频内容才能启动画中画
+        if pipPossible {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NotificationCenter.default.post(name: Notification.Name("aistream.setupPip"), object: nil)
+            }
+        }
     }
 
     private func togglePip() {
-        // 画中画需要 AVPlayerLayer 实例；PlayerUIView 里持有，通过通知桥接
-        NotificationCenter.default.post(name: .init("aistream.togglePip"), object: nil)
+        // 先确保 controller 已建好（视频可能刚 ready）
+        NotificationCenter.default.post(name: Notification.Name("aistream.setupPip"), object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NotificationCenter.default.post(name: Notification.Name("aistream.togglePip"), object: nil)
+        }
     }
 
-    // 全屏：强制切换方向（通过 scene 的 window）
+    /* 全屏 = 沉浸模式：隐藏所有控制 UI，视频铺满。
+       不再用 KVC 改 UIDevice.orientation —— 那是私有 API，iOS 16+ 直接闪退。 */
     private func toggleFullscreen() {
         forcedLandscape.toggle()
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            let vc = scene.windows.first?.rootViewController
-            if forcedLandscape {
-                vc?.setValue(UIDeviceOrientation.landscapeLeft.rawValue, forKey: "orientation")
-            } else {
-                vc?.setValue(UIDeviceOrientation.portrait.rawValue, forKey: "orientation")
-            }
-            UIDevice.current.setValue(
-                forcedLandscape ? UIDeviceOrientation.landscapeLeft.rawValue : UIDeviceOrientation.portrait.rawValue,
-                forKey: "orientation")
+        if forcedLandscape {
+            showBar = false
+            hideWork?.cancel()
+        } else {
+            showBar = true
+            scheduleHide()
         }
-        showBar = true
-        scheduleHide()
     }
 
     private func report(pos: Double, dur: Double) {
@@ -826,16 +862,27 @@ final class PlayerUIView: UIView {
             pip = AVPictureInPictureController(playerLayer: playerLayer)
             pip?.canStartPictureInPictureAutomaticallyFromInline = true
         }
-        // 接收 SwiftUI 层的画中画按钮通知
+        // 接收 SwiftUI 层的画中画通知
         NotificationCenter.default.addObserver(
-            self, selector: #selector(togglePip), name: .init("aistream.togglePip"), object: nil)
+            self, selector: #selector(togglePip), name: Notification.Name("aistream.togglePip"), object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(setupPipNow), name: Notification.Name("aistream.setupPip"), object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    @objc private func setupPipNow() {
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        if pip == nil { pip = AVPictureInPictureController(playerLayer: playerLayer) }
+    }
+
     @objc private func togglePip() {
+        setupPipNow()
         guard let pip = pip else { return }
-        if pip.isPictureInPictureActive { pip.stopPictureInPicture() }
-        else if pip.isPictureInPicturePossible { pip.startPictureInPicture() }
+        if pip.isPictureInPictureActive {
+            pip.stopPictureInPicture()
+        } else if pip.isPictureInPicturePossible {
+            pip.startPictureInPicture()
+        }
     }
 
     override func layoutSubviews() {

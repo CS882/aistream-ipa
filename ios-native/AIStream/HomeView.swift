@@ -215,7 +215,7 @@ struct HomeView: View {
                     .frame(height: 60)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
+                    LazyHStack(spacing: 14) {
                         ForEach(s.items ?? []) { c in
                             PosterCard(card: c) { pick = c }
                         }
