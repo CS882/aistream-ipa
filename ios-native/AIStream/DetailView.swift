@@ -517,17 +517,17 @@ struct PlayerView: View {
         .padding(.vertical, 8)
     }
 
-    private func speedChip(_ sp: Float) -> some View {
+    private func speedChip(_ sp: Double) -> some View {
         Button {
-            speed = sp
-            player?.rate = sp
+            speed = Float(sp)
+            player?.rate = Float(sp)
         } label: {
             Text(sp == 1.0 ? "1x" : "\(sp)x")
                 .font(.system(size: 12))
-                .foregroundColor(speed == sp ? .white : .white.opacity(0.5))
+                .foregroundColor(speed == Float(sp) ? .white : .white.opacity(0.5))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(speed == sp ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
+                .background(Capsule().fill(speed == Float(sp) ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
         }
         .buttonStyle(.plain)
     }
