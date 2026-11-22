@@ -520,12 +520,73 @@ extension Prefs {
         if !list.contains(where: { $0.id == item.id }) {
             list.insert(item, at: 0)
             follows = list
+            NotificationCenter.default.post(name: Notification.Name("aistream.followChanged"), object: nil)
         }
     }
     func removeFollow(id: String) {
         follows = follows.filter { $0.id != id }
+        NotificationCenter.default.post(name: Notification.Name("aistream.followChanged"), object: nil)
     }
     func isFollowed(id: String) -> Bool {
         follows.contains { $0.id == id }
+    }
+}
+
+// MARK: - 线路测速
+// 并发探测每条线路首包延迟（Range 请求读 1 字节），与 Android Speed.kt 同逻辑
+struct LineSpeed {
+    static let fail = 999999
+    static let shared = LineSpeed()
+
+    func text(_ ms: Int) -> String {
+        if ms >= LineSpeed.fail { return "超时" }
+        if ms < 1000 { return "\(ms)ms" }
+        return String(format: "%.1fs", Double(ms) / 1000.0)
+    }
+
+    func probe(_ urlString: String) async -> Int {
+        guard let u = URL(string: urlString) else { return LineSpeed.fail }
+        var req = URLRequest(url: u)
+        req.httpMethod = "GET"
+        req.setValue("*/*", forHTTPHeaderField: "Accept")
+        req.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
+        req.setValue(Api.UA, forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 6
+        let t0 = Date()
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            if let h = resp as? HTTPURLResponse, !(200..<400).contains(h.statusCode) {
+                return LineSpeed.fail
+            }
+            return ms
+        } catch {
+            return LineSpeed.fail
+        }
+    }
+
+    // 并发测所有线路（每条取第一集 URL），返回下标→毫秒
+    func testAll(_ lines: [[String]]) async -> [Int: Int] {
+        // lines[i] 是该线路所有集的 URL，取第一条
+        var results: [Int: Int] = [:]
+        await withTaskGroup(of: (Int, Int).self) { group in
+            for (i, urls) in lines.enumerated() {
+                guard let first = urls.first, !first.isEmpty else {
+                    results[i] = LineSpeed.fail
+                    continue
+                }
+                group.addTask {
+                    (i, await self.probe(first))
+                }
+            }
+            for await (idx, ms) in group { results[idx] = ms }
+        }
+        return results
+    }
+}
+
+extension Api {
+    static var UA: String {
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"
     }
 }

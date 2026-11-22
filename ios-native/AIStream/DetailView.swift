@@ -15,6 +15,9 @@ struct DetailView: View {
     @State private var faved = false
     @State private var favBusy = false
     @State private var followed = false
+    @State private var speeds: [Int: Int] = [:]      // 线路下标 → 毫秒
+    @State private var testing = false
+    @State private var speedInfo = ""
 
     struct Line: Identifiable {
         let id = UUID()
@@ -184,7 +187,26 @@ struct DetailView: View {
                 Text("线路").font(.system(size: 17, weight: .bold)).foregroundColor(Theme.fg)
                 if loading { ProgressView().scaleEffect(0.6).tint(Theme.accentSoft) }
                 Spacer()
-                Text("共 \(lines.count) 条").font(.system(size: 12)).foregroundColor(Theme.fgWeak)
+                Button {
+                    runSpeedTest()
+                } label: {
+                    HStack(spacing: 4) {
+                        if testing {
+                            ProgressView().scaleEffect(0.5).tint(Theme.accentSoft)
+                        } else {
+                            Image(systemName: "bolt.fill").font(.system(size: 11))
+                        }
+                        Text(testing ? "测速中" : "一键测速").font(.system(size: 12))
+                    }
+                    .foregroundColor(Theme.accentSoft)
+                    .padding(.horizontal, 10).frame(height: 28)
+                    .background(Capsule().fill(Theme.accentSoft.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .disabled(testing || lines.count < 2)
+            }
+            if !speedInfo.isEmpty {
+                Text(speedInfo).font(.system(size: 11)).foregroundColor(Theme.accentSoft)
             }
 
             if !err.isEmpty {
@@ -194,9 +216,7 @@ struct DetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
-                        FilterChip(text: DetailView.isDirect(l.eps.first?.url ?? "")
-                            ? "\(l.station) · \(l.from)"
-                            : "\(l.station) · \(l.from)(需解析)", on: i == lineIdx) {
+                        FilterChip(text: lineChipText(i, l), on: i == lineIdx) {
                             lineIdx = i
                         }
                     }
@@ -327,6 +347,37 @@ struct DetailView: View {
         }
     }
 
+    private func lineChipText(_ i: Int, _ l: Line) -> String {
+        let base = DetailView.isDirect(l.eps.first?.url ?? "")
+            ? "\(l.station) · \(l.from)"
+            : "\(l.station) · \(l.from)(需解析)"
+        if let ms = speeds[i] {
+            return base + " · " + LineSpeed.shared.text(ms)
+        }
+        return base
+    }
+
+    private func runSpeedTest() {
+        guard lines.count >= 2 else { return }
+        testing = true
+        speedInfo = "正在并发探测 \(lines.count) 条线路…"
+        let inputs = lines.map { $0.eps.map { $0.url ?? "" } }
+        Task {
+            let result = await LineSpeed.shared.testAll(inputs)
+            let best = result.filter { $0.value < LineSpeed.fail }.min { $0.value < $1.value }
+            await MainActor.run {
+                speeds = result
+                testing = false
+                if let b = best {
+                    lineIdx = b.key
+                    speedInfo = "最快：\(lines[b.key].station) · \(lines[b.key].from) · \(LineSpeed.shared.text(b.value))（已选中）"
+                } else {
+                    speedInfo = "所有线路都超时，检查网络"
+                }
+            }
+        }
+    }
+
     static func isDirect(_ url: String) -> Bool {
         let u = url.lowercased()
         return u.contains(".m3u8") || u.contains(".mp4") || u.hasSuffix(".ts")
@@ -365,14 +416,11 @@ struct PlayerView: View {
     @State private var timeObserver: Any?
     @State private var seeking = false
     // 画中画
-    @State private var pipController: AVPictureInPictureController?
-    @State private var pipPossible = false
-    // 全屏：横屏时隐藏其他 UI（本身已全屏，这里做"强制横屏"切换）
-    @State private var forcedLandscape = false
+    @ObservedObject private var pip = PipManager.shared
 
-    // 缩放：0=适应 1=拉伸 2=裁剪铺满
+    // 缩放 4 档（全屏也是缩放的一种）：0=适应 1=拉伸 2=裁剪 3=全屏(裁剪+隐藏UI)
     @State private var scaleIdx = 0
-    private let scaleNames = ["适应", "拉伸", "裁剪"]
+    private let scaleNames = ["适应", "拉伸", "裁剪", "全屏"]
 
     // 快进快退提示（">> 10s" / "<< 10s"），操作后短暂浮现
     @State private var seekHint = ""
@@ -404,12 +452,16 @@ struct PlayerView: View {
                                 }
                                 .onEnded { _ in endPress() }
                         )
-                        // 双指撑开 → 进全屏；捏合 → 退出
+                        // 双指撑开 → 裁剪→全屏；捏合 → 退回适应（全屏是缩放的第 4 档）
                         .simultaneousGesture(
                             MagnificationGesture()
                                 .onEnded { value in
-                                    if value > 1.3 && !forcedLandscape { toggleFullscreen() }
-                                    else if value < 0.7 && forcedLandscape { toggleFullscreen() }
+                                    if value > 1.25 {
+                                        zoomIn()
+                                    } else if value < 0.8 {
+                                        scaleIdx = 0
+                                        exitImmersiveIfNeeded()
+                                    }
                                 }
                         )
                 } else {
@@ -526,10 +578,10 @@ struct PlayerView: View {
                         barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
                         barButton("goforward.10", "快进") { nudge(10) }
                         barButton("slider.horizontal.3", "设置") { showMenu = true }
-                        if pipPossible {
-                            barButton("rectangle.on.rectangle", "画中画") { togglePip() }
+                        if pip.possible {
+                            barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
                         }
-                        barButton(forcedLandscape ? "rectangle.fill" : "rectangle", "全屏") { toggleFullscreen() }
+                        barButton(scaleIdx == 3 ? "rectangle" : "rectangle.fill", "全屏") { toggleFullscreen() }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -646,6 +698,8 @@ struct PlayerView: View {
     private func scaleChip(_ i: Int) -> some View {
         Button {
             scaleIdx = i
+            if i == 3 { showBar = false; hideWork?.cancel() }
+            else { exitImmersiveIfNeeded() }
         } label: {
             Text(scaleNames[i])
                 .font(.system(size: 12))
@@ -701,7 +755,6 @@ struct PlayerView: View {
             if !self.seeking { self.progress = time.seconds }
             if let d = p.currentItem?.duration.seconds, d.isFinite { self.duration = d }
         }
-        setupPip()
         // 不要用 report(pos:0) 起步 —— 那会把刚读出来的续播进度覆盖成 0。
         // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
@@ -801,33 +854,20 @@ struct PlayerView: View {
         p.seek(to: CMTime(value: Int64(t), timescale: 1), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
-    // 画中画：iOS 15+，需要视频层用 AVPlayerLayer
-    private func setupPip() {
-        pipPossible = AVPictureInPictureController.isPictureInPictureSupported()
-        // 延迟创建 PiP controller：AVPlayerLayer 要有实际视频内容才能启动画中画
-        if pipPossible {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                NotificationCenter.default.post(name: Notification.Name("aistream.setupPip"), object: nil)
-            }
-        }
-    }
-
-    private func togglePip() {
-        // 先确保 controller 已建好（视频可能刚 ready）
-        NotificationCenter.default.post(name: Notification.Name("aistream.setupPip"), object: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            NotificationCenter.default.post(name: Notification.Name("aistream.togglePip"), object: nil)
-        }
-    }
-
-    /* 全屏 = 沉浸模式：隐藏所有控制 UI，视频铺满。
-       不再用 KVC 改 UIDevice.orientation —— 那是私有 API，iOS 16+ 直接闪退。 */
+    // 全屏 = 缩放第 4 档（裁剪铺满 + 隐藏 UI），不再用私有 API 改方向
     private func toggleFullscreen() {
-        forcedLandscape.toggle()
-        if forcedLandscape {
-            showBar = false
-            hideWork?.cancel()
-        } else {
+        if scaleIdx == 3 { exitImmersiveIfNeeded(); scaleIdx = 0 }
+        else { scaleIdx = 3; showBar = false; hideWork?.cancel() }
+    }
+
+    // 双指撑开：适应/拉伸 → 裁剪，裁剪 → 全屏
+    private func zoomIn() {
+        if scaleIdx < 2 { scaleIdx = 2 }
+        else if scaleIdx == 2 { scaleIdx = 3; showBar = false; hideWork?.cancel() }
+    }
+
+    private func exitImmersiveIfNeeded() {
+        if scaleIdx == 3 {
             showBar = true
             scheduleHide()
         }
@@ -837,6 +877,38 @@ struct PlayerView: View {
         guard !histId.isEmpty else { return }
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
                         ep: epName, pos: pos, dur: dur)
+    }
+}
+
+// 画中画管理器：全局单例持有 controller，SwiftUI 和 UIView 都能直接调用
+final class PipManager: ObservableObject {
+    static let shared = PipManager()
+    @Published var possible = false
+    private var controller: AVPictureInPictureController?
+    private weak var layer: AVPlayerLayer?
+
+    func attach(_ playerLayer: AVPlayerLayer) {
+        layer = playerLayer
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        if controller == nil {
+            controller = AVPictureInPictureController(playerLayer: playerLayer)
+        }
+        possible = controller != nil
+    }
+
+    func toggle() {
+        guard let c = controller else { return }
+        if c.isPictureInPictureActive {
+            c.stopPictureInPicture()
+        } else if c.isPictureInPicturePossible {
+            c.startPictureInPicture()
+        } else {
+            // 还没就绪：延迟重试一次
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let c = self?.controller, c.isPictureInPicturePossible else { return }
+                c.startPictureInPicture()
+            }
+        }
     }
 }
 
@@ -857,39 +929,16 @@ final class PlayerUIView: UIView {
         playerLayer.videoGravity = .resizeAspect
         layer.addSublayer(playerLayer)
 
-        // 画中画：AVPictureInPictureController 必须绑 AVPlayerLayer，在这里初始化
-        if AVPictureInPictureController.isPictureInPictureSupported() {
-            pip = AVPictureInPictureController(playerLayer: playerLayer)
-            pip?.canStartPictureInPictureAutomaticallyFromInline = true
-        }
-        // 接收 SwiftUI 层的画中画通知
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(togglePip), name: Notification.Name("aistream.togglePip"), object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(setupPipNow), name: Notification.Name("aistream.setupPip"), object: nil)
+        // 画中画：把 AVPlayerLayer 交给全局 PipManager 持有 controller
+        PipManager.shared.attach(playerLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    @objc private func setupPipNow() {
-        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
-        if pip == nil { pip = AVPictureInPictureController(playerLayer: playerLayer) }
-    }
-
-    @objc private func togglePip() {
-        setupPipNow()
-        guard let pip = pip else { return }
-        if pip.isPictureInPictureActive {
-            pip.stopPictureInPicture()
-        } else if pip.isPictureInPicturePossible {
-            pip.startPictureInPicture()
-        }
-    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer.frame = bounds
     }
-    deinit { NotificationCenter.default.removeObserver(self) }
+
 }
 
 struct PlayerLayerView: UIViewRepresentable {
@@ -905,7 +954,7 @@ struct PlayerLayerView: UIViewRepresentable {
     private func gravity(_ idx: Int) -> AVLayerVideoGravity {
         switch idx {
         case 1: return .resize
-        case 2: return .resizeAspectFill
+        case 2, 3: return .resizeAspectFill
         default: return .resizeAspect
         }
     }

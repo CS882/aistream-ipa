@@ -84,7 +84,10 @@ struct FollowView: View {
                 }
             }
         }
-        .onAppear { items = Prefs.shared.follows }
+        .onAppear { refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("aistream.followChanged"))) { _ in
+            refresh()
+        }
         .fullScreenCover(item: $pick) { c in DetailView(card: c) }
     }
 
@@ -139,6 +142,10 @@ struct FollowView: View {
             Spacer()
         }
         .frame(width: 126)
+    }
+
+    private func refresh() {
+        items = Prefs.shared.follows
     }
 
     static func toCard(_ f: FollowItem) -> Card {
