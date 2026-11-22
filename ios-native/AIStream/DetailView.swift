@@ -1035,6 +1035,14 @@ final class PlayerUIView: UIView {
         }
     }
 
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // 双指触摸时，长按和点按都不该开始
+        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer {
+            return pinch?.state != .began && pinch?.state != .changed
+        }
+        return true
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer.frame = bounds
@@ -1087,13 +1095,6 @@ extension PlayerUIView: UIGestureRecognizerDelegate {
         return true
     }
 
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        // 双指触摸时，长按和点按都不该开始
-        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer {
-            return pinch?.state != .began && pinch?.state != .changed
-        }
-        return true
-    }
 }
 
 extension View {
