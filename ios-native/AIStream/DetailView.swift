@@ -579,8 +579,10 @@ struct PlayerView: View {
         // 观察播放状态：失败时给提示，不再干黑屏
         statusObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime, object: p.currentItem, queue: .main
-        ) { [weak self] _ in
-            self?.playFailed = true
+        ) { _ in
+            // PlayerView 是 struct，不能用 weak self；闭包里只改 @State，
+            // 且 observer 会在 onDisappear 随 view 销毁，不会真的循环引用
+            DispatchQueue.main.async { self.playFailed = true }
         }
         player = p
         p.rate = speed
