@@ -893,7 +893,7 @@ struct PlayerView: View {
 }
 
 // 画中画管理器：全局单例持有 controller，SwiftUI 和 UIView 都能直接调用
-final class PipManager: ObservableObject {
+final class PipManager: NSObject, ObservableObject {
     static let shared = PipManager()
     @Published var possible = false
     @Published var active = false
@@ -909,13 +909,14 @@ final class PipManager: ObservableObject {
         }
         guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
         if controller == nil {
-            let c = AVPictureInPictureController(playerLayer: playerLayer)
-            c.delegate = self
-            // 视频起播后自动进画中画（切主屏幕时系统自动启动）
-            if #available(iOS 14.2, *) {
-                c.canStartPictureInPictureAutomaticallyFromInline = true
+            if let c = AVPictureInPictureController(playerLayer: playerLayer) {
+                c.delegate = self
+                // 视频起播后自动进画中画（切主屏幕时系统自动启动）
+                if #available(iOS 14.2, *) {
+                    c.canStartPictureInPictureAutomaticallyFromInline = true
+                }
+                controller = c
             }
-            controller = c
         }
         possible = true
     }
