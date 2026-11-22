@@ -100,10 +100,11 @@ struct Card: Decodable, Identifiable {
     let media: String?
     let station: String?
     // 历史接口会带进度；普通 catalog/home 没有这些字段，所以都是可选
-    let ep: String?
-    let pos: FlexStr?
-    let dur: FlexStr?
-    let t: FlexStr?
+    // 给默认值，这样搜索/收藏构造 Card 时不用每个都传
+    var ep: String? = nil
+    var pos: FlexStr? = nil
+    var dur: FlexStr? = nil
+    var t: FlexStr? = nil
 
     enum CodingKeys: String, CodingKey {
         case rawId = "id"

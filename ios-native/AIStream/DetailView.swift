@@ -476,52 +476,23 @@ struct PlayerView: View {
         .allowsHitTesting(true)
     }
 
-    // MARK: 弹窗菜单
+    // MARK: 弹窗菜单（拆成小视图，避免编译器类型检查超时）
     private var menuPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("播放设置").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+            Text("播放设置")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
                 .padding(.bottom, 12)
 
-            menuRow("倍速") {
-                HStack(spacing: 6) {
-                    ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { sp in
-                        Button {
-                            speed = sp
-                            player?.rate = sp
-                        } label: {
-                            Text(sp == 1.0 ? "1x" : "\(sp)x")
-                                .font(.system(size: 12))
-                                .foregroundColor(speed == sp ? .white : .white.opacity(0.5))
-                                .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background(Capsule().fill(speed == sp ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            menuRow("画面比例") {
-                HStack(spacing: 6) {
-                    ForEach(0..<scaleNames.count, id: \.self) { i in
-                        Button {
-                            scaleIdx = i
-                        } label: {
-                            Text(scaleNames[i])
-                                .font(.system(size: 12))
-                                .foregroundColor(scaleIdx == i ? .white : .white.opacity(0.5))
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Capsule().fill(scaleIdx == i ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            speedRow
+            scaleRow
 
             Button { showMenu = false } label: {
                 Text("完成")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity).frame(height: 40)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
                     .background(Capsule().fill(Color.purple.opacity(0.85)))
             }
             .buttonStyle(.plain)
@@ -532,12 +503,61 @@ struct PlayerView: View {
         .padding(.horizontal, 30)
     }
 
-    private func menuRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private var speedRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13)).foregroundColor(.white.opacity(0.6))
-            content()
+            Text("倍速")
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+            HStack(spacing: 6) {
+                ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { sp in
+                    speedChip(sp)
+                }
+            }
         }
         .padding(.vertical, 8)
+    }
+
+    private func speedChip(_ sp: Float) -> some View {
+        Button {
+            speed = sp
+            player?.rate = sp
+        } label: {
+            Text(sp == 1.0 ? "1x" : "\(sp)x")
+                .font(.system(size: 12))
+                .foregroundColor(speed == sp ? .white : .white.opacity(0.5))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(speed == sp ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var scaleRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("画面比例")
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+            HStack(spacing: 6) {
+                ForEach(0..<scaleNames.count, id: \.self) { i in
+                    scaleChip(i)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func scaleChip(_ i: Int) -> some View {
+        Button {
+            scaleIdx = i
+        } label: {
+            Text(scaleNames[i])
+                .font(.system(size: 12))
+                .foregroundColor(scaleIdx == i ? .white : .white.opacity(0.5))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(scaleIdx == i ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: 播放控制
