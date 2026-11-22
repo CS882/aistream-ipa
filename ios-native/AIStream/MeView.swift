@@ -11,6 +11,9 @@ struct MeView: View {
     @State private var toast = ""
     @State private var showHistory = false
     @State private var showFav = false
+    @State private var showRedeem = false
+    @State private var showInvite = false
+    @State private var showPwd = false
 
     private var vipText: String {
         let lv = me?.vip?.level?.value ?? "0"
@@ -44,8 +47,9 @@ struct MeView: View {
 
                     row("观看历史", "clock.arrow.circlepath") { showHistory = true }
                     row("我的收藏", "star") { showFav = true }
-                    row("积分兑换", "gift") { tip("iOS 版暂未接入积分兑换，先用安卓版") }
-                    row("修改密码", "lock") { tip("iOS 版暂未接入改密，先用安卓版") }
+                    row("积分兑换", "gift") { showRedeem = true }
+                    row("邀请好友得积分", "person.2.badge.gearshape") { showInvite = true }
+                    row("修改密码", "lock") { showPwd = true }
                     row("退出登录", "arrow.right.square", danger: true) {
                         app.logout()
                     }
@@ -71,6 +75,9 @@ struct MeView: View {
         .sheet(isPresented: $showFav) {
             CardGridView(title: "收藏") { try await Api.favs() }
         }
+        .sheet(isPresented: $showRedeem) { RedeemView() }
+        .sheet(isPresented: $showInvite) { InviteView(code: inviteCode) }
+        .sheet(isPresented: $showPwd) { ChangePasswordView() }
     }
 
     private var accountCard: some View {

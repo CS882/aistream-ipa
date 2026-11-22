@@ -75,6 +75,8 @@ struct LoginResp: Decodable {
 // 有些字段服务端会返回数字、有些返回字符串，统一按字符串读
 struct FlexStr: Decodable {
     let value: String
+    // 便捷构造：本地组装 Card 时用（服务端数据走 init(from:)）
+    init(_ v: String) { value = v }
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let s = try? c.decode(String.self) { value = s }
@@ -399,5 +401,128 @@ extension Api {
             "ep": ep, "epTotal": "", "pos": "\(posInt)", "dur": "\(durInt)",
         ]
         Task { _ = try? await raw("/api/history", method: "POST", body: body) }
+    }
+}
+
+
+// MARK: - 兑换 / 邀请 / 注册
+// 重新定义：上面的 id 冲突，用 CodingKeys 映射
+struct RedeemGood: Decodable, Identifiable {
+    let rid: String?
+    let title: String?
+    let desc: String?
+    let kind: String?
+    let level: FlexStr?
+    let days: FlexStr?
+    let cost: FlexStr?
+    let stock: FlexStr?
+    let soldOut: Bool?
+    enum CodingKeys: String, CodingKey {
+        case rid = "id", title, desc, kind, level, days, cost, stock, soldOut
+    }
+    var id: String { rid ?? UUID().uuidString }
+}
+
+struct RedeemResp: Decodable {
+    let enabled: Bool?
+    let items: [RedeemGood]?
+    let me: RedeemMe?
+}
+
+struct RedeemMe: Decodable {
+    let points: FlexStr?
+    let vip: VipInfo?
+}
+
+struct InviteResp: Decodable {
+    let code: String?
+    let invited: FlexStr?
+    let perInvite: FlexStr?
+}
+
+struct RegResp: Decodable {
+    let token: String?
+    let user: LoginResp.LoginUser?
+    let error: String?
+}
+
+// 追剧项：本地存（基于收藏 + 历史），服务端无 subscribe 接口
+struct FollowItem: Codable, Identifiable {
+    let id: String
+    let title: String
+    let poster: String
+    let year: String
+    let lastEp: String
+    let addAt: Double
+    var uid: String { id }
+}
+
+
+extension Api {
+    // 积分兑换商品列表 + 我的积分
+    static func redeemList() async throws -> RedeemResp {
+        try await get("/api/redeem")
+    }
+    // 兑换商品（返回 ok / error）
+    static func redeem(id: String) async throws -> OkResp {
+        let data = try await raw("/api/redeem", method: "POST", body: ["id": id])
+        return try JSONDecoder().decode(OkResp.self, from: data)
+    }
+    // 邀请码
+    static func invite() async throws -> InviteResp {
+        try await get("/api/invite")
+    }
+    // 修改密码
+    static func changePassword(old: String, new: String) async throws -> OkResp {
+        let data = try await raw("/api/auth/change-password", method: "POST",
+                                body: ["oldPassword": old, "newPassword": new])
+        return try JSONDecoder().decode(OkResp.self, from: data)
+    }
+    // 注册（不需要 token）
+    static func register(user: String, pass: String, invite: String) async throws -> RegResp {
+        let data = try await raw("/api/auth/register", method: "POST",
+                                body: ["username": user, "password": pass, "invite": invite])
+        return try JSONDecoder().decode(RegResp.self, from: data)
+    }
+    // 直播流地址：必须带 token，走服务端代理
+    static func iptvStreamURL(cid: String) -> URL? {
+        var u = base + "/api/iptv/stream?ch="
+        u += cid.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? cid
+        return URL(string: u)
+    }
+    // 直播流请求带 token（AVPlayer 默认不带，需要 URLRequest）
+    static func iptvStreamRequest(cid: String) -> URLRequest? {
+        guard let u = iptvStreamURL(cid: cid) else { return nil }
+        var r = URLRequest(url: u)
+        let t = Prefs.shared.token
+        if !t.isEmpty { r.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        return r
+    }
+}
+
+
+extension Prefs {
+    private var followKey: String { "follows" }
+    var follows: [FollowItem] {
+        get {
+            guard let data = d.data(forKey: followKey) else { return [] }
+            return (try? JSONDecoder().decode([FollowItem].self, from: data)) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) { d.set(data, forKey: followKey) }
+        }
+    }
+    func addFollow(_ item: FollowItem) {
+        var list = follows
+        if !list.contains(where: { $0.id == item.id }) {
+            list.insert(item, at: 0)
+            follows = list
+        }
+    }
+    func removeFollow(id: String) {
+        follows = follows.filter { $0.id != id }
+    }
+    func isFollowed(id: String) -> Bool {
+        follows.contains { $0.id == id }
     }
 }

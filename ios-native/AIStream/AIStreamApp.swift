@@ -45,7 +45,7 @@ struct RootView: View {
 // tvOS 结构：顶部标签导航 + 内容
 struct MainView: View {
     @EnvironmentObject var app: AppState
-    private let tabs = ["首页", "分类", "直播", "收藏", "我的"]
+    private let tabs = ["首页", "分类", "追剧", "直播", "收藏", "我的"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,8 +54,9 @@ struct MainView: View {
                 switch app.tab {
                 case 0: HomeView()
                 case 1: CatalogView()
-                case 2: LiveView()
-                case 3: CardGridView(title: "收藏") { try await Api.favs() }
+                case 2: FollowView()
+                case 3: LiveView()
+                case 4: CardGridView(title: "收藏") { try await Api.favs() }
                 default: MeView()
                 }
             }
@@ -105,11 +106,11 @@ struct MainView: View {
                         } label: {
                             VStack(spacing: 4) {
                                 Text(t)
-                                    .font(.system(size: 14, weight: app.tab == i ? .semibold : .regular))
+                                    .font(.system(size: 17, weight: app.tab == i ? .semibold : .regular))
                                     .foregroundColor(app.tab == i ? Color.white : Theme.fgWeak)
                                 Capsule()
                                     .fill(app.tab == i ? Theme.accentSoft : Color.clear)
-                                    .frame(width: 20, height: 3)
+                                    .frame(width: 24, height: 4)
                             }
                             .padding(.vertical, 2)
                             .contentShape(Rectangle())
@@ -119,7 +120,7 @@ struct MainView: View {
                 }
                 .padding(.horizontal, 18)
             }
-            .frame(height: 38)
+            .frame(height: 52)
         }
     }
 }

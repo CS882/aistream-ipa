@@ -14,6 +14,7 @@ struct DetailView: View {
     @State private var playTitle = ""
     @State private var faved = false
     @State private var favBusy = false
+    @State private var followed = false
 
     struct Line: Identifiable {
         let id = UUID()
@@ -45,6 +46,7 @@ struct DetailView: View {
             if let list = try? await Api.favs() {
                 await MainActor.run { faved = list.contains { $0.idKey == card.idKey } }
             }
+            await MainActor.run { followed = Prefs.shared.isFollowed(id: card.idKey) }
         }
         .fullScreenCover(item: $playing) { ep in
             PlayerView(url: ep.url ?? "", title: playTitle,
@@ -143,11 +145,22 @@ struct DetailView: View {
                         Text(faved ? "★ 已收藏" : "☆ 收藏")
                             .font(.system(size: 14))
                             .foregroundColor(faved ? Theme.accentSoft : Theme.fg)
-                            .frame(width: 96, height: 48)
+                            .frame(width: 88, height: 48)
                             .glassPill()
                     }
                     .buttonStyle(.plain)
                     .disabled(favBusy)
+
+                    Button {
+                        toggleFollow()
+                    } label: {
+                        Text(followed ? "✓ 已追剧" : "＋ 追剧")
+                            .font(.system(size: 14))
+                            .foregroundColor(followed ? Theme.accentSoft : Theme.fg)
+                            .frame(width: 88, height: 48)
+                            .glassPill()
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.top, 4)
             }
@@ -292,6 +305,17 @@ struct DetailView: View {
         }
     }
 
+    private func toggleFollow() {
+        if followed {
+            Prefs.shared.removeFollow(id: card.idKey)
+        } else {
+            Prefs.shared.addFollow(FollowItem(
+                id: card.idKey, title: card.title ?? "", poster: card.posterPath ?? "",
+                year: card.year?.value ?? "", lastEp: "", addAt: Date().timeIntervalSince1970))
+        }
+        followed.toggle()
+    }
+
     private func toggleFav() {
         favBusy = true
         Task {
@@ -324,6 +348,8 @@ struct PlayerView: View {
     var histPoster: String = ""
     var histYear: String = ""
     var epName: String = ""
+    var useAuth: Bool = false        // 直播：URL 需要带 token
+    var streamCid: String = ""       // 直播频道 cid
 
     @Environment(\.dismiss) private var dismiss
 
@@ -333,6 +359,16 @@ struct PlayerView: View {
     @State private var isPlaying = true
     @State private var playFailed = false
     @State private var statusObserver: NSObjectProtocol?
+    // 进度条
+    @State private var progress: Double = 0
+    @State private var duration: Double = 0
+    @State private var timeObserver: Any?
+    @State private var seeking = false
+    // 画中画
+    @State private var pipController: AVPictureInPictureController?
+    @State private var pipPossible = false
+    // 全屏：横屏时隐藏其他 UI（本身已全屏，这里做"强制横屏"切换）
+    @State private var forcedLandscape = false
 
     // 缩放：0=适应 1=拉伸 2=裁剪铺满
     @State private var scaleIdx = 0
@@ -394,27 +430,27 @@ struct PlayerView: View {
                     .allowsHitTesting(false)
                 }
 
-                // 返回按钮始终可见（不随 showBar 隐藏），标题只在控制层显示时出现
-                HStack(spacing: 10) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.black.opacity(0.35)))
-                    }
-                    .buttonStyle(.plain)
+                // 返回按钮跟随控制层一起隐藏；点屏幕任意处唤出
+                if showBar {
+                    HStack(spacing: 10) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.black.opacity(0.35)))
+                        }
+                        .buttonStyle(.plain)
 
-                    if showBar {
                         Text(title)
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
 
                 // 快进快退提示
                 if !seekHint.isEmpty {
@@ -434,18 +470,40 @@ struct PlayerView: View {
                 }
             }
 
-            // 底部工具栏：只占自身高度，放在最底部
+            // 底部：进度条 + 工具栏
             if showBar {
-                HStack(spacing: 22) {
-                    barButton("gobackward.10", "快退") { nudge(-10) }
-                    barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
-                    barButton("goforward.10", "快进") { nudge(10) }
-                    barButton("slider.horizontal.3", "设置") { showMenu = true }
+                VStack(spacing: 10) {
+                    // 进度条：可拖动跳转，显示当前/总时长
+                    VStack(spacing: 4) {
+                        Slider(value: $progress, in: 0...max(1, duration), step: 1) { changed in
+                            seeking = !changed
+                            if !changed { seek(to: progress) }
+                        }
+                        .tint(Theme.accentSoft)
+                        .padding(.horizontal, 4)
+                        HStack {
+                            Text(fmtTime(progress)).font(.system(size: 10)).foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(fmtTime(duration)).font(.system(size: 10)).foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                    .padding(.horizontal, 24)
+
+                    HStack(spacing: 20) {
+                        barButton("gobackward.10", "快退") { nudge(-10) }
+                        barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
+                        barButton("goforward.10", "快进") { nudge(10) }
+                        barButton("slider.horizontal.3", "设置") { showMenu = true }
+                        if pipPossible {
+                            barButton("rectangle.on.rectangle", "画中画") { togglePip() }
+                        }
+                        barButton(forcedLandscape ? "rectangle.fill" : "rectangle", "全屏") { toggleFullscreen() }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Color.black.opacity(0.45)))
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Capsule().fill(Color.black.opacity(0.45)))
-                .padding(.bottom, 24)
+                .padding(.bottom, 20)
                 .transition(.opacity)
             }
         }
@@ -455,6 +513,9 @@ struct PlayerView: View {
         .onDisappear {
             hideWork?.cancel()
             stopSeek()
+            if let t = timeObserver, let p = player { p.removeTimeObserver(t) }
+            timeObserver = nil
+            NotificationCenter.default.removeObserver(self)
             let t = player?.currentTime().seconds ?? 0
             let d = player?.currentItem?.duration.seconds ?? 0
             player?.pause()
@@ -566,8 +627,15 @@ struct PlayerView: View {
 
     // MARK: 播放控制
     private func start() {
-        guard let u = URL(string: url) else { playFailed = true; return }
-        let p = AVPlayer(url: u)
+        // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
+        let avItem: AVPlayerItem
+        if useAuth, let req = Api.iptvStreamRequest(cid: streamCid) {
+            avItem = AVPlayerItem(urlRequest: req)
+        } else {
+            guard let u = URL(string: url) else { playFailed = true; return }
+            avItem = AVPlayerItem(url: u)
+        }
+        let p = AVPlayer(playerItem: avItem)
 
         // 续播：本地有进度且没接近结尾就跳过去
         let saved = Prefs.shared.getProgress(histId, epName)
@@ -589,6 +657,15 @@ struct PlayerView: View {
         p.play()
         isPlaying = true
         playFailed = false
+
+        // 进度观察：每 0.5 秒更新进度条（不拖动时）
+        timeObserver = p.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 2), queue: .main
+        ) { time in
+            if !self.seeking { self.progress = time.seconds }
+            if let d = p.currentItem?.duration.seconds, d.isFinite { self.duration = d }
+        }
+        setupPip()
         // 不要用 report(pos:0) 起步 —— 那会把刚读出来的续播进度覆盖成 0。
         // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
@@ -676,6 +753,46 @@ struct PlayerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: w)
     }
 
+
+    private func fmtTime(_ sec: Double) -> String {
+        guard sec.isFinite && sec > 0 else { return "0:00" }
+        let m = Int(sec) / 60, s = Int(sec) % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    private func seek(to t: Double) {
+        guard let p = player else { return }
+        p.seek(to: CMTime(value: Int64(t), timescale: 1), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    // 画中画：iOS 15+，需要视频层用 AVPlayerLayer
+    private func setupPip() {
+        pipPossible = AVPictureInPictureController.isPictureInPictureSupported()
+    }
+
+    private func togglePip() {
+        // 画中画需要 AVPlayerLayer 实例；PlayerUIView 里持有，通过通知桥接
+        NotificationCenter.default.post(name: .init("aistream.togglePip"), object: nil)
+    }
+
+    // 全屏：强制切换方向（通过 scene 的 window）
+    private func toggleFullscreen() {
+        forcedLandscape.toggle()
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            let vc = scene.windows.first?.rootViewController
+            if forcedLandscape {
+                vc?.setValue(UIDeviceOrientation.landscapeLeft.rawValue, forKey: "orientation")
+            } else {
+                vc?.setValue(UIDeviceOrientation.portrait.rawValue, forKey: "orientation")
+            }
+            UIDevice.current.setValue(
+                forcedLandscape ? UIDeviceOrientation.landscapeLeft.rawValue : UIDeviceOrientation.portrait.rawValue,
+                forKey: "orientation")
+        }
+        showBar = true
+        scheduleHide()
+    }
+
     private func report(pos: Double, dur: Double) {
         guard !histId.isEmpty else { return }
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
@@ -688,6 +805,7 @@ struct PlayerView: View {
    updateUIView 又只在绑定变化时调用，导致 layer 尺寸一直是 0 → 黑屏。 */
 final class PlayerUIView: UIView {
     let playerLayer = AVPlayerLayer()
+    var pip: AVPictureInPictureController?
     var gravity: AVLayerVideoGravity = .resizeAspect {
         didSet { playerLayer.videoGravity = gravity }
     }
@@ -698,13 +816,29 @@ final class PlayerUIView: UIView {
         playerLayer.player = player
         playerLayer.videoGravity = .resizeAspect
         layer.addSublayer(playerLayer)
+
+        // 画中画：AVPictureInPictureController 必须绑 AVPlayerLayer，在这里初始化
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            pip = AVPictureInPictureController(playerLayer: playerLayer)
+            pip?.canStartPictureInPictureAutomaticallyFromInline = true
+        }
+        // 接收 SwiftUI 层的画中画按钮通知
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(togglePip), name: .init("aistream.togglePip"), object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func togglePip() {
+        guard let pip = pip else { return }
+        if pip.isPictureInPictureActive { pip.stopPictureInPicture() }
+        else if pip.isPictureInPicturePossible { pip.startPictureInPicture() }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer.frame = bounds
     }
+    deinit { NotificationCenter.default.removeObserver(self) }
 }
 
 struct PlayerLayerView: UIViewRepresentable {

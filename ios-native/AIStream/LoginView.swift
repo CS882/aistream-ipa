@@ -10,6 +10,7 @@ struct LoginView: View {
     @State private var busy = false
     @State private var err = ""
     @FocusState private var focus: Int?
+    @State private var showRegister = false
 
     var body: some View {
         ZStack {
@@ -67,6 +68,17 @@ struct LoginView: View {
                     .padding(.top, 24)
                     .padding(.horizontal, 22)
 
+                    Button {
+                        showRegister = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("没有账号？").font(.system(size: 13)).foregroundColor(Theme.fgWeak)
+                            Text("立即注册").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.accentSoft)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 16)
+
                     Text("原生客户端 v1.6.0")
                         .font(.system(size: 11))
                         .foregroundColor(Theme.fgWeak)
@@ -75,6 +87,15 @@ struct LoginView: View {
                 }
                 .frame(maxWidth: 460)
                 .frame(maxWidth: .infinity)
+            }
+        }
+        .sheet(isPresented: $showRegister) {
+            RegisterView { u, p in
+                // 注册成功后回填登录框并直接登录
+                user = u
+                pass = p
+                showRegister = false
+                submit()
             }
         }
     }
