@@ -576,7 +576,10 @@ struct PlayerView: View {
         p.rate = speed
         p.play()
         isPlaying = true
-        report(pos: 0, dur: 0)
+        // 不要用 report(pos:0) 起步 —— 那会把刚读出来的续播进度覆盖成 0。
+        // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
+        Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
+                        ep: epName, pos: saved.pos, dur: saved.dur)
     }
 
     private func togglePlay() {
