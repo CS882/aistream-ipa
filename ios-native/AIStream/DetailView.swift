@@ -409,6 +409,7 @@ struct PlayerView: View {
     var streamCid: String = ""       // 直播频道 cid
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var player: AVPlayer?
     @State private var showBar = true
@@ -594,9 +595,7 @@ struct PlayerView: View {
                         barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
                         barButton("goforward.10", "快进") { nudge(10) }
                         barButton("slider.horizontal.3", "设置") { showMenu = true }
-                        if pip.possible {
-                            barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
-                        }
+                        barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
                         barButton(scaleIdx == 3 ? "rectangle" : "rectangle.fill", "全屏") { toggleFullscreen() }
                     }
                     .padding(.horizontal, 16)
@@ -623,6 +622,14 @@ struct PlayerView: View {
         }
         .statusBar(hidden: true)
         .hideSystemOverlays()
+        .onChange(of: scenePhase) { phase in
+            guard let p = player else { return }
+            // 切后台不主动暂停：PiP 激活时视频要继续播；没 PiP 时系统会自己挂起。
+            // 回前台时如果用户没主动暂停过，自动恢复播放。
+            if phase == .active && isPlaying {
+                p.play()
+            }
+        }
     }
 
     private func barButton(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -977,12 +984,12 @@ final class PipManager: NSObject, ObservableObject {
         }
         if c.isPictureInPictureActive {
             c.stopPictureInPicture()
-        } else if c.isPictureInPicturePossible {
-            c.startPictureInPicture()
-        } else {
-            diag = "视频尚未开始播放，无法画中画"
-            retryStart(0)
+            return
         }
+        // 不依赖 isPictureInPicturePossible（它对某些 m3u8 误判为 false）
+        // 直接尝试启动，系统通过 delegate 回调告诉我们成败
+        c.startPictureInPicture()
+        diag = "正在启动画中画…"
     }
 
     private func retryStart(_ n: Int) {
