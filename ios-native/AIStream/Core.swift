@@ -42,6 +42,19 @@ final class Prefs {
         set { d.set(newValue, forKey: "siteName") }
     }
 
+    /* 续播进度：key = 片 id + 集名。本地存一份，退出播放器立刻能接着看，
+       不依赖服务端历史接口的刷新延迟。 */
+    func progressKey(_ id: String, _ ep: String) -> String { "prog|\(id)|\(ep)" }
+    func getProgress(_ id: String, _ ep: String) -> (pos: Double, dur: Double) {
+        let k = progressKey(id, ep)
+        return (d.double(forKey: k + ".pos"), d.double(forKey: k + ".dur"))
+    }
+    func setProgress(_ id: String, _ ep: String, pos: Double, dur: Double) {
+        let k = progressKey(id, ep)
+        d.set(pos, forKey: k + ".pos")
+        d.set(dur, forKey: k + ".dur")
+    }
+
     var configured: Bool { !token.isEmpty }
 
     func clear() {
@@ -65,8 +78,12 @@ struct FlexStr: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let s = try? c.decode(String.self) { value = s }
-        else if let i = try? c.decode(Int.self) { value = String(i) }
-        else if let dbl = try? c.decode(Double.self) { value = String(format: "%.1f", dbl) }
+        else if let i = try? c.decode(Int64.self) { value = String(i) }
+        else if let b = try? c.decode(Bool.self) { value = b ? "1" : "0" }
+        else if let dbl = try? c.decode(Double.self) {
+            value = dbl.truncatingRemainder(dividingBy: 1) == 0
+                ? String(format: "%.0f", dbl) : String(format: "%.1f", dbl)
+        }
         else { value = "" }
     }
 }
@@ -82,11 +99,17 @@ struct Card: Decodable, Identifiable {
     let score: FlexStr?
     let media: String?
     let station: String?
+    // 历史接口会带进度；普通 catalog/home 没有这些字段，所以都是可选
+    let ep: String?
+    let pos: FlexStr?
+    let dur: FlexStr?
+    let t: FlexStr?
 
     enum CodingKeys: String, CodingKey {
         case rawId = "id"
         case title, poster, year, score, media, station
         case posterUrl = "poster_url"
+        case ep, pos, dur, t
     }
 
     // 统一出口：谁有就用谁，调用方不用关心数据来自哪个接口
@@ -234,7 +257,10 @@ struct VipInfo: Decodable {
     let level: FlexStr?
     let name: String?
     let noAds: Bool?
-    let expire: String?
+    // 服务端 pointMul 返回的是数字（2），不是字符串 —— 必须用 FlexStr，
+    // 否则 JSONDecoder 会认为整个 PointsResp 解码失败，积分页全变默认值
+    let pointMul: FlexStr?
+    let expire: FlexStr?
     let days: FlexStr?
 }
 
@@ -359,12 +385,17 @@ extension Api {
         return r.on ?? false
     }
 
-    // 观看历史：进播放器时写一条，退出时把进度补上
+    // 观看历史：进播放器时写一条，退出时把进度补上；同时落本地供续播
     static func postHistory(id: String, title: String, poster: String, year: String,
-                            ep: String, pos: String, dur: String) {
+                            ep: String, pos: Double, dur: Double) {
+        let posInt = Int(max(0, pos))
+        let durInt = Int(max(0, dur))
+        if !id.isEmpty {
+            Prefs.shared.setProgress(id, ep, pos: pos, dur: dur)
+        }
         let body: [String: Any] = [
             "id": id, "title": title, "poster": poster, "year": year,
-            "ep": ep, "epTotal": "", "pos": pos, "dur": dur,
+            "ep": ep, "epTotal": "", "pos": "\(posInt)", "dur": "\(durInt)",
         ]
         Task { _ = try? await raw("/api/history", method: "POST", body: body) }
     }

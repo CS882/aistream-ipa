@@ -9,6 +9,11 @@ struct HomeView: View {
     @State private var loading = true
     @State private var err = ""
     @State private var pick: Card?
+    // 首页直接搜索：回车即出结果，不跳分类页
+    @State private var query = ""
+    @State private var searching = false
+    @State private var searchResults: [Card] = []
+    @FocusState private var searchOn: Bool
 
     var body: some View {
         ZStack {
@@ -24,38 +29,69 @@ struct HomeView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    // 首页也给一个搜索入口，点了直接切到分类页的输入框
-                    Button {
-                        app.tab = 1
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.fgWeak)
-                            Text("搜片名（全网聚合）")
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.fgWeak)
-                            Spacer()
+                    // 首页搜索框：直接输入片名回车搜索，结果覆盖首页内容
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13))
+                            .foregroundColor(Theme.fgWeak)
+
+                        TextField("搜片名（全网聚合）", text: $query)
+                            .focused($searchOn)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .font(.system(size: 13))
+                            .foregroundColor(Theme.fg)
+                            .onSubmit { runSearch() }
+
+                        if searching {
+                            ProgressView().scaleEffect(0.6).tint(Theme.accentSoft)
+                        } else if !query.isEmpty {
+                            Button {
+                                query = ""
+                                searchResults = []
+                                searchOn = false
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Theme.fgWeak)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 16)
-                        .frame(height: 38)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                        )
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .frame(height: 38)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
                     .padding(.horizontal, 18)
                     .padding(.bottom, 6)
 
                     ScrollView {
-                        VStack(spacing: 0) {
-                            hero
-                            ForEach(Array(shelves.enumerated()), id: \.offset) { _, s in
-                                shelfRow(s)
+                        if isSearchMode {
+                            // 搜索结果：3 列网格，跟分类页一致
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
+                                spacing: 14
+                            ) {
+                                ForEach(searchResults) { c in
+                                    PosterCard(card: c, fixedWidth: nil) { pick = c }
+                                }
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 26)
+                        } else {
+                            VStack(spacing: 0) {
+                                hero
+                                // 全部 13 个源站都显示，空站给提示而不是直接丢掉
+                                ForEach(Array(allShelves.enumerated()), id: \.offset) { _, s in
+                                    shelfRow(s)
+                                }
+                            }
+                            .padding(.bottom, 26)
                         }
-                        .padding(.bottom, 26)
                     }
                 }
             }
@@ -63,6 +99,35 @@ struct HomeView: View {
         .task { if shelves.isEmpty { await load() } }
         .fullScreenCover(item: $pick) { c in
             DetailView(card: c)
+        }
+    }
+
+    private var allShelves: [Shelf] { shelves }
+
+    private var isSearchMode: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /* 首页直接搜索 /api/search：豆瓣卡 + 采集站两路合并，结果覆盖首页内容。
+       清空输入框恢复首页。 */
+    private func runSearch() {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { searchResults = []; return }
+        searchOn = false
+        searching = true
+        Task {
+            var out: [Card] = []
+            if let r = try? await Api.search(q) {
+                out += (r.tmdb ?? [])
+                out += (r.collect ?? []).map { c in
+                    Card(rawId: c.id, title: c.name, poster: c.poster, posterUrl: nil,
+                         year: c.year, score: nil, media: "collect", station: c.stationId)
+                }
+            }
+            await MainActor.run {
+                searchResults = out
+                searching = false
+            }
         }
     }
 
@@ -142,13 +207,21 @@ struct HomeView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 14)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(s.items ?? []) { c in
-                        PosterCard(card: c) { pick = c }
+            if (s.items ?? []).isEmpty {
+                Text("暂无内容")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.fgWeak)
+                    .padding(.horizontal, 24)
+                    .frame(height: 60)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(s.items ?? []) { c in
+                            PosterCard(card: c) { pick = c }
+                        }
                     }
+                    .padding(.horizontal, 17)
                 }
-                .padding(.horizontal, 17)
             }
         }
     }
@@ -158,7 +231,8 @@ struct HomeView: View {
         err = ""
         do {
             let r = try await Api.home()
-            let cols = (r.columns ?? []).filter { !($0.items ?? []).isEmpty }
+            // 显示全部源站（含空站），banner 只从有内容的站取
+            let cols = r.columns ?? []
             await MainActor.run {
                 shelves = cols
                 banner = Array(collectBanner(cols).prefix(6))

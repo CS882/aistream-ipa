@@ -57,7 +57,7 @@ struct CatalogView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(isSearchMode ? "搜索  ·  \(shown.count) 部" : "\(kinds[kindIdx].1)  ·  \(shown.count) 部")
+            Text(isSearchMode ? "搜索" : kinds[kindIdx].1)
                 .font(.system(size: 24, weight: .bold))
                 .foregroundColor(Theme.fg)
 
