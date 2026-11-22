@@ -949,11 +949,12 @@ final class PipManager: NSObject, ObservableObject {
         }
         // 换 layer 时重建
         if controller == nil {
-            let c = AVPictureInPictureController(playerLayer: playerLayer)
-            c.delegate = self
-            controller = c
+            if let c = AVPictureInPictureController(playerLayer: playerLayer) {
+                c.delegate = self
+                controller = c
+            }
         }
-        possible = true
+        possible = controller != nil
         // 再等 possible 变 true（视频起播后系统才允许）
         waitPossible(0)
     }
