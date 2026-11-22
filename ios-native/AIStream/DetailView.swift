@@ -448,28 +448,27 @@ struct PlayerView: View {
                 Color.black.ignoresSafeArea()
 
                 if let p = player, !playFailed {
-                    PlayerLayerView(player: p, scaleIdx: $scaleIdx)
-                        .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { v in
-                                    if pressSide == 0 { beginPress(at: v.startLocation.x) }
-                                }
-                                .onEnded { _ in endPress() }
-                        )
-                        // 双指撑开 → 裁剪→全屏；捏合 → 退回适应（全屏是缩放的第 4 档）
-                        .simultaneousGesture(
-                            MagnificationGesture()
-                                .onEnded { value in
-                                    if value > 1.25 {
-                                        zoomIn()
-                                    } else if value < 0.8 {
-                                        scaleIdx = 0
-                                        exitImmersiveIfNeeded()
-                                    }
-                                }
-                        )
+                    PlayerLayerView(
+                        player: p,
+                        scaleIdx: $scaleIdx,
+                        onTap: { toggleBar() },
+                        onPressBegin: { x in
+                            if pressSide == 0 { beginPress(at: x) }
+                        },
+                        onPressEnd: { endPress() },
+                        onCancelPress: { cancelPress() },
+                        onPinch: { value in
+                            // 双指撑开 → 裁剪→全屏；捏合 → 退回适应
+                            if value > 1.25 {
+                                zoomIn()
+                            } else if value < 0.8 {
+                                scaleIdx = 0
+                                exitImmersiveIfNeeded()
+                            }
+                        }
+                    )
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "play.slash").font(.system(size: 34)).foregroundColor(.white.opacity(0.5))
@@ -820,6 +819,13 @@ struct PlayerView: View {
         pressSide = 0
     }
 
+    // 捏合打断长按：只停定时器，不改显隐、不弹提示
+    private func cancelPress() {
+        seekTimer?.invalidate(); seekTimer = nil
+        holdTimer?.invalidate(); holdTimer = nil
+        pressSide = 0
+    }
+
     private func stopSeek() {
         seekTimer?.invalidate(); seekTimer = nil
         holdTimer?.invalidate(); holdTimer = nil
@@ -890,16 +896,28 @@ struct PlayerView: View {
 final class PipManager: ObservableObject {
     static let shared = PipManager()
     @Published var possible = false
+    @Published var active = false
     private var controller: AVPictureInPictureController?
     private weak var layer: AVPlayerLayer?
 
     func attach(_ playerLayer: AVPlayerLayer) {
-        layer = playerLayer
+        // 换片源时 layer 会变，旧 controller 绑的是旧 layer，必须重建
+        if layer !== playerLayer {
+            controller?.delegate = nil
+            controller = nil
+            layer = playerLayer
+        }
         guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
         if controller == nil {
-            controller = AVPictureInPictureController(playerLayer: playerLayer)
+            let c = AVPictureInPictureController(playerLayer: playerLayer)
+            c.delegate = self
+            // 视频起播后自动进画中画（切主屏幕时系统自动启动）
+            if #available(iOS 14.2, *) {
+                c.canStartPictureInPictureAutomaticallyFromInline = true
+            }
+            controller = c
         }
-        possible = controller != nil
+        possible = true
     }
 
     func toggle() {
@@ -909,12 +927,35 @@ final class PipManager: ObservableObject {
         } else if c.isPictureInPicturePossible {
             c.startPictureInPicture()
         } else {
-            // 还没就绪：延迟重试一次
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                guard let c = self?.controller, c.isPictureInPicturePossible else { return }
+            // 视频还没加载好：轮询等待 possible（最多 5 秒）
+            retryStart(0)
+        }
+    }
+
+    private func retryStart(_ n: Int) {
+        guard n < 10 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self, let c = self.controller else { return }
+            if c.isPictureInPictureActive { return }
+            if c.isPictureInPicturePossible {
                 c.startPictureInPicture()
+            } else {
+                self.retryStart(n + 1)
             }
         }
+    }
+}
+
+extension PipManager: AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        active = true
+    }
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        active = false
+    }
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
+                                    failedToStartPictureInPictureWithError error: Error) {
+        active = false
     }
 }
 
@@ -928,17 +969,70 @@ final class PlayerUIView: UIView {
         didSet { playerLayer.videoGravity = gravity }
     }
 
+    // 手势回调（由 SwiftUI 注入）
+    var onTap: () -> Void = {}
+    var onPressBegin: (CGFloat) -> Void = { _ in }
+    var onPressEnd: () -> Void = {}
+    var onCancelPress: () -> Void = {}     // 捏合打断长按：只停快进，不切显隐
+    var onPinch: (CGFloat) -> Void = { _ in }
+
+    // 手势识别器：捏合和长按互斥，杜绝双指撑开误触快进
+    private var longPress: UILongPressGestureRecognizer?
+    private var pinch: UIPinchGestureRecognizer?
+
     init(player: AVPlayer) {
         super.init(frame: .zero)
         backgroundColor = .black
         playerLayer.player = player
         playerLayer.videoGravity = .resizeAspect
         layer.addSublayer(playerLayer)
+        isUserInteractionEnabled = true
+
+        // 点按：切换控制层
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        tap.delegate = self
+        addGestureRecognizer(tap)
+
+        // 长按（单指）：快进/快退
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress))
+        lp.minimumPressDuration = 0.3
+        lp.delegate = self
+        longPress = lp
+        addGestureRecognizer(lp)
+
+        // 捏合（双指）：缩放。识别成功时强制让长按失败
+        let pin = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch))
+        pin.delegate = self
+        pinch = pin
+        addGestureRecognizer(pin)
 
         // 画中画：把 AVPlayerLayer 交给全局 PipManager 持有 controller
         PipManager.shared.attach(playerLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func handleTap() { onTap() }
+
+    @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
+        // 双指正在捏合 → 忽略长按，避免误触快进
+        if pinch?.state == .began || pinch?.state == .changed { return }
+        switch g.state {
+        case .began: onPressBegin(g.location(in: self).x)
+        case .ended, .cancelled, .failed: onPressEnd()
+        default: break
+        }
+    }
+
+    @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        // 捏合开始时，取消正在进行长按（触发快进的定时器）
+        if g.state == .began { onCancelPress() }
+        switch g.state {
+        case .ended, .cancelled:
+            onPinch(g.scale)
+            g.scale = 1
+        default: break
+        }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -950,12 +1044,29 @@ final class PlayerUIView: UIView {
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
     @Binding var scaleIdx: Int
+    // 由 SwiftUI 注入的手势回调（UIKit 原生手势保证双指/单指互斥）
+    var onTap: () -> Void = {}
+    var onPressBegin: (CGFloat) -> Void = { _ in }
+    var onPressEnd: () -> Void = {}
+    var onCancelPress: () -> Void = {}
+    var onPinch: (CGFloat) -> Void = { _ in }
 
     func makeUIView(context: Context) -> PlayerUIView {
-        PlayerUIView(player: player)
+        let v = PlayerUIView(player: player)
+        v.onTap = onTap
+        v.onPressBegin = onPressBegin
+        v.onPressEnd = onPressEnd
+        v.onCancelPress = onCancelPress
+        v.onPinch = onPinch
+        return v
     }
     func updateUIView(_ v: PlayerUIView, context: Context) {
         v.gravity = gravity(scaleIdx)
+        v.onTap = onTap
+        v.onPressBegin = onPressBegin
+        v.onPressEnd = onPressEnd
+        v.onCancelPress = onCancelPress
+        v.onPinch = onPinch
     }
     private func gravity(_ idx: Int) -> AVLayerVideoGravity {
         switch idx {
@@ -963,6 +1074,24 @@ struct PlayerLayerView: UIViewRepresentable {
         case 2, 3: return .resizeAspectFill
         default: return .resizeAspect
         }
+    }
+}
+
+// 手势互斥：双指捏合时禁用长按和点按，避免误触快进/显隐
+extension PlayerUIView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        // 捏合 与 长按/点按 不能同时识别
+        if gestureRecognizer === pinch || other === pinch { return false }
+        return true
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // 双指触摸时，长按和点按都不该开始
+        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer {
+            return pinch?.state != .began && pinch?.state != .changed
+        }
+        return true
     }
 }
 
