@@ -50,17 +50,21 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            ZStack {
-                switch app.tab {
-                case 0: HomeView()
-                case 1: CatalogView()
-                case 2: FollowView()
-                case 3: LiveView()
-                case 4: CardGridView(title: "收藏") { try await Api.favs() }
-                default: MeView()
-                }
+            /* 六个标签放进系统分页容器：左右滑动即可切换，所有导航栏行为一致。
+               用 TabView 而不是自己加 DragGesture 的原因：页面里的横向海报条
+               也是 ScrollView，自己写的手势会和它们互相抢（滑海报顺带切标签）；
+               TabView 的分页手势由系统协调，内层横向滚动优先。 */
+            TabView(selection: $app.tab) {
+                HomeView().tag(0)
+                CatalogView().tag(1)
+                FollowView().tag(2)
+                LiveView().tag(3)
+                CardGridView(title: "收藏") { try await Api.favs() }.tag(4)
+                MeView().tag(5)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.bg)
         }
         .background(Theme.bg.ignoresSafeArea())
     }
@@ -98,29 +102,38 @@ struct MainView: View {
             .padding(.horizontal, 18)
             .padding(.top, 4)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in
-                        Button {
-                            app.tab = i
-                        } label: {
-                            VStack(spacing: 4) {
-                                Text(t)
-                                    .font(.system(size: 17, weight: app.tab == i ? .semibold : .regular))
-                                    .foregroundColor(app.tab == i ? Color.white : Theme.fgWeak)
-                                Capsule()
-                                    .fill(app.tab == i ? Theme.accentSoft : Color.clear)
-                                    .frame(width: 24, height: 4)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 22) {
+                        ForEach(Array(tabs.enumerated()), id: \.offset) { i, t in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) { app.tab = i }
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Text(t)
+                                        .font(.system(size: 17, weight: app.tab == i ? .semibold : .regular))
+                                        .foregroundColor(app.tab == i ? Color.white : Theme.fgWeak)
+                                    Capsule()
+                                        .fill(app.tab == i ? Theme.accentSoft : Color.clear)
+                                        .frame(width: 24, height: 4)
+                                }
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
                             }
-                            .padding(.vertical, 2)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .id(i)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 18)
+                }
+                .frame(height: 52)
+                // 左右划动切页后，把当前标签滚到可见位置
+                .onChange(of: app.tab) { idx in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(idx, anchor: .center)
                     }
                 }
-                .padding(.horizontal, 18)
             }
-            .frame(height: 52)
         }
     }
 }

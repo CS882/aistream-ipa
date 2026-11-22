@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import MediaPlayer
 
 struct DetailView: View {
     let card: Card
@@ -451,6 +452,18 @@ struct PlayerView: View {
     // 手势起点：区分左右半屏的按压快进快退
     @State private var pressSide = 0   // -1 左（快退） 1 右（快进）
 
+    // 横滑快进快退（跟进度条一样：跟手预览，松手才真正跳）
+    @State private var scrubActive = false
+    @State private var scrubStart: Double = 0
+    @State private var scrubTarget: Double = 0
+
+    // 竖滑：左半屏亮度、右半屏音量
+    @State private var hudVisible = false
+    @State private var hudValue: Double = 0
+    @State private var hudIsBrightness = true
+    @State private var hudWork: DispatchWorkItem?
+    @State private var adjustBase: Double = 0
+
     var body: some View {
         /* 用两层 ZStack 各自顶部/底部对齐：返回栏和工具栏只占自身高度，
            中间视频区完全暴露给手势 —— 不再用铺满全屏的 VStack + Spacer，
@@ -482,6 +495,12 @@ struct PlayerView: View {
                             cancelPress()   // 先停掉可能正在进行的快进
                             dismiss()
                         },
+                        onSeekBegin: { scrubBegin() },
+                        onSeekChange: { dx in scrubChange(dx) },
+                        onSeekEnd: { cancelled in scrubEnd(cancelled) },
+                        onAdjustBegin: { isLeft in adjustBegin(isLeft: isLeft) },
+                        onAdjustChange: { dy in adjustChange(dy) },
+                        onAdjustEnd: { adjustEnd() },
                         pip: pip
                     )
                     .ignoresSafeArea()
@@ -543,6 +562,50 @@ struct PlayerView: View {
                         .background(Capsule().fill(Color.red.opacity(0.55)))
                         .padding(.top, 60)
                         .allowsHitTesting(false)
+                }
+
+                // 横滑进度 HUD：跟进度条一样显示"跳到哪 / 总时长"
+                if scrubActive {
+                    VStack(spacing: 4) {
+                        Text(scrubDeltaText)
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("\(fmtTime(scrubTarget)) / \(fmtTime(duration))")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.black.opacity(0.55))
+                    )
+                    .padding(.top, 130)
+                    .allowsHitTesting(false)
+                }
+
+                // 亮度/音量 HUD
+                if hudVisible {
+                    VStack(spacing: 6) {
+                        Image(systemName: hudIsBrightness ? "sun.max.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.25)).frame(width: 120, height: 4)
+                            Capsule().fill(Color.white).frame(width: max(0, 120 * CGFloat(hudValue)), height: 4)
+                        }
+                        Text(hudTitle + " " + String(Int(hudValue * 100)) + "%")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.black.opacity(0.55))
+                    )
+                    .padding(.top, 130)
+                    .allowsHitTesting(false)
                 }
 
                 // 快进快退提示
@@ -754,6 +817,7 @@ struct PlayerView: View {
     private func start() {
         // PiP 硬性前置：先激活后台音频会话（Apple 文档要求）
         AudioSessionManager.activateForPlayback()
+        _ = VolumeManager.shared      // 预热：让隐藏的 MPVolumeView 先进 window
         // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
         let avItem: AVPlayerItem
         if useAuth, let req = Api.iptvStreamRequest(cid: streamCid), let u = req.url {
@@ -890,6 +954,84 @@ struct PlayerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: w)
     }
 
+
+    // MARK: 横滑快进快退（跟进度条一样）
+    /* 全屏宽度对应多少秒：短片子给 60s、长片子最多 240s，
+       这样 10 分钟的短剧和 2.5 小时的电影都好用。 */
+    private var scrubSpan: Double {
+        guard duration > 0 else { return 90 }
+        return max(60, min(240, duration * 0.06))
+    }
+
+    private var scrubDelta: Double { scrubTarget - scrubStart }
+
+    private var hudTitle: String { hudIsBrightness ? "亮度" : "音量" }
+
+    private var scrubDeltaText: String {
+        let d = scrubDelta
+        let sign = d >= 0 ? "+" : "-"
+        let t = fmtTime(abs(d))
+        return d == 0 ? "0:00" : "\(sign)\(t)"
+    }
+
+    private func scrubBegin() {
+        cancelPress()                 // 停掉长按连跳，避免两套 seek 打架
+        seekTimer?.invalidate(); seekTimer = nil
+        hideWork?.cancel()            // 拖动期间别让控制层消失
+        scrubActive = true
+        scrubStart = progress
+        scrubTarget = progress
+        seeking = true                // 让时间观察器别覆盖我们设的 progress
+    }
+
+    private func scrubChange(_ ratio: CGFloat) {
+        guard scrubActive else { return }
+        let delta = Double(ratio) * scrubSpan
+        let upper = duration > 0 ? duration : max(scrubStart + delta, 0)
+        scrubTarget = max(0, min(upper, scrubStart + delta))
+        progress = scrubTarget         // 进度条同步跟手
+    }
+
+    private func scrubEnd(_ cancelled: Bool) {
+        guard scrubActive else { return }
+        scrubActive = false
+        seeking = false
+        if !cancelled, scrubTarget != scrubStart {
+            seek(to: scrubTarget)
+        }
+        progress = scrubTarget
+        scheduleHide()
+    }
+
+    // MARK: 竖滑亮度 / 音量
+    private func adjustBegin(isLeft: Bool) {
+        cancelPress()
+        hideWork?.cancel()
+        hudIsBrightness = isLeft
+        adjustBase = isLeft ? Double(UIScreen.main.brightness) : VolumeManager.shared.current
+        hudValue = adjustBase
+        hudVisible = true
+    }
+
+    private func adjustChange(_ ratio: CGFloat) {
+        // 手指向上（ratio 为负）= 调大，整屏高度对应 100%
+        let v = max(0, min(1, adjustBase - Double(ratio)))
+        if hudIsBrightness {
+            UIScreen.main.brightness = CGFloat(v)
+        } else {
+            VolumeManager.shared.set(v)
+        }
+        hudValue = v
+        hudVisible = true
+    }
+
+    private func adjustEnd() {
+        hudWork?.cancel()
+        let w = DispatchWorkItem { hudVisible = false }
+        hudWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: w)
+        scheduleHide()
+    }
 
     private func fmtTime(_ sec: Double) -> String {
         guard sec.isFinite && sec > 0 else { return "0:00" }
@@ -1051,11 +1193,23 @@ final class PlayerUIView: UIView {
     var onPressEnd: () -> Void = {}
     var onCancelPress: () -> Void = {}     // 捏合打断长按：只停快进，不切显隐
     var onPinch: (CGFloat) -> Void = { _ in }
-    var onSwipeBack: () -> Void = {}       // 左滑返回
+    var onSwipeBack: () -> Void = {}       // 左边缘横滑返回
+    // 横滑进度（跟进度条一样）
+    var onSeekBegin: () -> Void = {}
+    var onSeekChange: (CGFloat) -> Void = { _ in }   // 归一化横向比例
+    var onSeekEnd: (Bool) -> Void = { _ in }
+    // 竖滑亮度/音量
+    var onAdjustBegin: (Bool) -> Void = { _ in }     // true=左半屏(亮度)
+    var onAdjustChange: (CGFloat) -> Void = { _ in } // 归一化纵向比例
+    var onAdjustEnd: () -> Void = {}
 
     // 手势识别器：捏合和长按互斥，杜绝双指撑开误触快进
     private var longPress: UILongPressGestureRecognizer?
     private var pinch: UIPinchGestureRecognizer?
+    private var pan: UIPanGestureRecognizer?
+    private var panMode = 0            // 0=未判定 1=横滑进度 2=竖滑亮度/音量
+    private var panStartX: CGFloat = 0
+    private var pressCancelled = false // 长按是否被滑动打断（打断后抬手不切显隐）
 
     init(player: AVPlayer) {
         super.init(frame: .zero)
@@ -1083,11 +1237,21 @@ final class PlayerUIView: UIView {
         pinch = pin
         addGestureRecognizer(pin)
 
-        // 快速左滑：返回（swipe 是离散手势，不会和长按/捏合争夺）
-        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeBack))
-        swipe.direction = .left
-        swipe.delegate = self
-        addGestureRecognizer(swipe)
+        // 左边缘横滑：返回（用系统边缘手势，不抢画面中间的滑动）
+        let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgeBack))
+        edge.edges = .left
+        edge.delegate = self
+        addGestureRecognizer(edge)
+
+        /* 单指拖动：一个手势区分三种操作，避免多个手势互相抢
+           - 横滑 → 快进/快退（跟进度条一样跟手）
+           - 左半屏竖滑 → 亮度
+           - 右半屏竖滑 → 音量 */
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan))
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = self
+        self.pan = pan
+        addGestureRecognizer(pan)
 
         // 画中画的 attach 由 PlayerLayerView 注入 pip 后调用（见 attachPip）
     }
@@ -1100,18 +1264,62 @@ final class PlayerUIView: UIView {
 
     @objc private func handleTap() { onTap() }
 
-    @objc private func handleSwipeBack() {
+    @objc private func handleEdgeBack(_ g: UIScreenEdgePanGestureRecognizer) {
         // 双指捏合时不响应
         if pinch?.state == .began || pinch?.state == .changed { return }
-        onSwipeBack()
+        switch g.state {
+        case .ended:
+            if g.translation(in: self).x > 60 { onSwipeBack() }
+        default: break
+        }
+    }
+
+    @objc private func handlePan(_ g: UIPanGestureRecognizer) {
+        // 双指捏合进行中 → 单指拖动不参与
+        if pinch?.state == .began || pinch?.state == .changed { return }
+        let t = g.translation(in: self)
+
+        switch g.state {
+        case .began:
+            panMode = 0
+            panStartX = g.location(in: self).x
+            pressCancelled = true
+            onCancelPress()          // 打断长按连跳，避免两套 seek 打架
+
+        case .changed:
+            if panMode == 0 {
+                // 先动够 12pt 再判方向，防止手抖误判
+                if abs(t.x) > 12 && abs(t.x) > abs(t.y) {
+                    panMode = 1
+                    onSeekBegin()
+                } else if abs(t.y) > 12 && abs(t.y) > abs(t.x) {
+                    panMode = 2
+                    onAdjustBegin(panStartX < bounds.width / 2)
+                }
+            }
+            // 传归一化比例：横屏时用视频层宽度换算，不能用 UIScreen（那是竖屏坐标系）
+            if panMode == 1 { onSeekChange(t.x / max(1, bounds.width)) }
+            else if panMode == 2 { onAdjustChange(t.y / max(1, bounds.height)) }
+
+        case .ended, .cancelled, .failed:
+            if panMode == 1 { onSeekEnd(g.state == .cancelled) }
+            else if panMode == 2 { onAdjustEnd() }
+            panMode = 0
+
+        default: break
+        }
     }
 
     @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
         // 双指正在捏合 → 忽略长按，避免误触快进
         if pinch?.state == .began || pinch?.state == .changed { return }
         switch g.state {
-        case .began: onPressBegin(g.location(in: self).x)
-        case .ended, .cancelled, .failed: onPressEnd()
+        case .began:
+            pressCancelled = false
+            onPressBegin(g.location(in: self).x)
+        case .ended, .cancelled, .failed:
+            // 被滑动打断过 → 只清状态，不切显隐
+            if pressCancelled { pressCancelled = false } else { onPressEnd() }
         default: break
         }
     }
@@ -1128,10 +1336,11 @@ final class PlayerUIView: UIView {
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        // 双指触摸时，长按和点按都不该开始
-        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer
-            || gestureRecognizer is UISwipeGestureRecognizer {
-            return pinch?.state != .began && pinch?.state != .changed
+        // 双指触摸时，单指手势都不该开始
+        if pinch?.state == .began || pinch?.state == .changed { return false }
+        // 从最左 32pt 内起手的拖动留给"返回"，其余才是快进快退/亮度音量
+        if gestureRecognizer === pan {
+            return gestureRecognizer.location(in: self).x > 32
         }
         return true
     }
@@ -1153,17 +1362,28 @@ struct PlayerLayerView: UIViewRepresentable {
     var onCancelPress: () -> Void = {}
     var onPinch: (CGFloat) -> Void = { _ in }
     var onSwipeBack: () -> Void = {}
+    var onSeekBegin: () -> Void = {}
+    var onSeekChange: (CGFloat) -> Void = { _ in }
+    var onSeekEnd: (Bool) -> Void = { _ in }
+    var onAdjustBegin: (Bool) -> Void = { _ in }
+    var onAdjustChange: (CGFloat) -> Void = { _ in }
+    var onAdjustEnd: () -> Void = {}
     var pip: PipManager?
 
     func makeUIView(context: Context) -> PlayerUIView {
         let v = PlayerUIView(player: player)
-        if let m = pip { v.attachPip(m) }
         v.onTap = onTap
         v.onPressBegin = onPressBegin
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress
         v.onPinch = onPinch
         v.onSwipeBack = onSwipeBack
+        v.onSeekBegin = onSeekBegin
+        v.onSeekChange = onSeekChange
+        v.onSeekEnd = onSeekEnd
+        v.onAdjustBegin = onAdjustBegin
+        v.onAdjustChange = onAdjustChange
+        v.onAdjustEnd = onAdjustEnd
         if let m = pip { v.attachPip(m) }
         return v
     }
@@ -1175,6 +1395,12 @@ struct PlayerLayerView: UIViewRepresentable {
         v.onCancelPress = onCancelPress
         v.onPinch = onPinch
         v.onSwipeBack = onSwipeBack
+        v.onSeekBegin = onSeekBegin
+        v.onSeekChange = onSeekChange
+        v.onSeekEnd = onSeekEnd
+        v.onAdjustBegin = onAdjustBegin
+        v.onAdjustChange = onAdjustChange
+        v.onAdjustEnd = onAdjustEnd
     }
     private func gravity(_ idx: Int) -> AVLayerVideoGravity {
         switch idx {
@@ -1206,5 +1432,38 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+
+/* 系统音量读写：AVAudioSession.outputVolume 只读，
+   改音量要用 MPVolumeView 里那个隐藏的 UISlider（业界通用做法）。*/
+final class VolumeManager {
+    static let shared = VolumeManager()
+    private let box = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 40, height: 40))
+
+    private init() {
+        box.showsRouteButton = false
+        box.alpha = 0.01
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let win = UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow }) }
+                .first
+            win?.addSubview(self.box)
+        }
+    }
+
+    private var slider: UISlider? {
+        box.subviews.compactMap { $0 as? UISlider }.first
+    }
+
+    var current: Double { Double(AVAudioSession.sharedInstance().outputVolume) }
+
+    func set(_ v: Double) {
+        let val = Float(max(0, min(1, v)))
+        guard let s = slider else { return }
+        s.value = val
+        s.sendActions(for: .touchUpInside)
     }
 }
