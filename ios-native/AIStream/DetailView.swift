@@ -469,10 +469,6 @@ struct PlayerView: View {
                         },
                         onPressEnd: { endPress() },
                         onCancelPress: { cancelPress() },
-                        onSwipeBack: {
-                            cancelPress()   // 先停掉可能正在进行的快进
-                            dismiss()
-                        },
                         onPinch: { value in
                             // 双指撑开 → 裁剪→全屏；捏合 → 退回适应
                             if value > 1.25 {
@@ -481,6 +477,10 @@ struct PlayerView: View {
                                 scaleIdx = 0
                                 exitImmersiveIfNeeded()
                             }
+                        },
+                        onSwipeBack: {
+                            cancelPress()   // 先停掉可能正在进行的快进
+                            dismiss()
                         }
                     )
                     .ignoresSafeArea()
@@ -932,90 +932,85 @@ final class PipManager: NSObject, ObservableObject {
     static let shared = PipManager()
     @Published var possible = false
     @Published var active = false
-    @Published var diag = ""              // 诊断信息，让用户知道为什么不能画中画
+    @Published var diag = ""
     private var controller: AVPictureInPictureController?
     private weak var layer: AVPlayerLayer?
-    private var waiting = false
+    private var readyKVO: NSKeyValueObservation?
     private var possibleKVO: NSKeyValueObservation?
 
+    /* 用 KVO 监听 isReadyForDisplay / isPictureInPicturePossible，
+       替代原来的 0.3s 轮询 —— 视频一就绪立刻建 controller，点按钮即响应。 */
     func attach(_ playerLayer: AVPlayerLayer) {
-        layer = playerLayer
-        diag = ""
-        // 关键：必须等视频真正 ready 才能创建 PiP controller。
-        // 过早创建（layer 还没 playerItem/没画面）会让 isPictureInPicturePossible 永久为 false。
-        observeReady(playerLayer)
-    }
-
-    private func observeReady(_ playerLayer: AVPlayerLayer) {
-        guard !waiting else { return }
-        waiting = true
-        // 轮询等 isReadyForDisplay —— 视频首帧出来才创建 controller
-        checkReady(0, playerLayer)
-    }
-
-    private func checkReady(_ n: Int, _ playerLayer: AVPlayerLayer) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self = self else { return }
-            if self.layer !== playerLayer { return }  // 换片源了
-            if playerLayer.isReadyForDisplay {
-                self.createController(playerLayer)
-            } else if n < 40 {
-                self.checkReady(n + 1, playerLayer)
-            } else {
-                self.diag = "视频没准备好，无法画中画"
-            }
+        if layer !== playerLayer {
+            controller?.delegate = nil
+            controller = nil
+            readyKVO?.invalidate(); readyKVO = nil
+            possibleKVO?.invalidate(); possibleKVO = nil
+            layer = playerLayer
         }
-    }
-
-    private func createController(_ playerLayer: AVPlayerLayer) {
+        diag = ""
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
             diag = "设备不支持画中画"
             return
         }
-        // 换 layer 时重建
+        // controller 早建（不等 ready）：延迟到下一轮 RunLoop，
+        // 确保 layer 已加入 window（AVPictureInPictureController 需要）
         if controller == nil {
-            if let c = AVPictureInPictureController(playerLayer: playerLayer) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.controller == nil else { return }
+                guard let c = AVPictureInPictureController(playerLayer: playerLayer) else { return }
                 c.delegate = self
-                controller = c
+                self.controller = c
+                self.possibleKVO = c.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] _, ch in
+                    DispatchQueue.main.async {
+                        self?.possible = ch.newValue ?? false
+                        if ch.newValue == true {
+                            self?.diag = ""
+                            self?.tryStartIfPending()
+                        }
+                    }
+                }
             }
         }
-        possible = controller != nil
-        // KVO 监听 possible（Apple 官方推荐），变更时清掉诊断
-        possibleKVO?.invalidate()
-        possibleKVO = controller?.observe(\.isPictureInPicturePossible, options: [.initial, .new]) {
-            [weak self] _, change in
-            if change.newValue == true {
-                DispatchQueue.main.async { self?.diag = "" }
+        // ready 后就尝试启动（如果用户已经点过）
+        if readyKVO == nil {
+            readyKVO = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] _, ch in
+                guard ch.newValue == true else { return }
+                DispatchQueue.main.async { self?.tryStartIfPending() }
             }
         }
+        if playerLayer.isReadyForDisplay { tryStartIfPending() }
+    }
+
+    private var pending = false
+    private func tryStartIfPending() {
+        guard pending, let c = controller, c.isPictureInPicturePossible, !c.isPictureInPictureActive else { return }
+        pending = false
+        c.startPictureInPicture()
     }
 
     func toggle() {
+        // 没建好就现场重建一次（应对 attach 时机太早的情况）
+        if controller == nil, let l = layer,
+           let c = AVPictureInPictureController(playerLayer: l) {
+            c.delegate = self
+            controller = c
+        }
         guard let c = controller else {
-            diag = "画中画还没准备好，稍等几秒再点"
+            diag = "画中画还在初始化，稍等一秒再点"
             return
         }
         if c.isPictureInPictureActive {
             c.stopPictureInPicture()
             return
         }
-        // 不依赖 isPictureInPicturePossible（它对某些 m3u8 误判为 false）
-        // 直接尝试启动，系统通过 delegate 回调告诉我们成败
-        c.startPictureInPicture()
-        diag = "正在启动画中画…"
-    }
-
-    private func retryStart(_ n: Int) {
-        guard n < 15 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self, let c = self.controller else { return }
-            if c.isPictureInPictureActive { return }
-            if c.isPictureInPicturePossible {
-                self.diag = ""
-                c.startPictureInPicture()
-            } else {
-                self.retryStart(n + 1)
-            }
+        if c.isPictureInPicturePossible {
+            diag = ""
+            c.startPictureInPicture()
+        } else {
+            // 记下意图，等 possible 变 true 立刻启动（KVO 会回调）
+            pending = true
+            diag = "正在准备画中画…"
         }
     }
 }
@@ -1023,6 +1018,7 @@ final class PipManager: NSObject, ObservableObject {
 extension PipManager: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
         active = true
+        pending = false
         diag = ""
     }
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
@@ -1031,6 +1027,7 @@ extension PipManager: AVPictureInPictureControllerDelegate {
     func pictureInPictureController(_ c: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
         active = false
+        pending = false
         diag = "画中画失败：\(error.localizedDescription)"
     }
 }
