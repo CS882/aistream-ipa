@@ -44,6 +44,17 @@ struct DetailView: View {
             closeButton
         }
         .background(Theme.bg.ignoresSafeArea())
+        // 左滑返回：横向位移超过 100pt 且明显大于纵向位移才算，避免和竖向滚动/横向 chip 冲突
+        .gesture(
+            DragGesture(minimumDistance: 60)
+                .onEnded { v in
+                    let dx = v.translation.width
+                    let dy = v.translation.height
+                    if dx < -100 && abs(dx) > abs(dy) * 1.5 {
+                        dismiss()
+                    }
+                }
+        )
         .task {
             await load()
             if let list = try? await Api.favs() {
@@ -458,6 +469,10 @@ struct PlayerView: View {
                         },
                         onPressEnd: { endPress() },
                         onCancelPress: { cancelPress() },
+                        onSwipeBack: {
+                            cancelPress()   // 先停掉可能正在进行的快进
+                            dismiss()
+                        },
                         onPinch: { value in
                             // 双指撑开 → 裁剪→全屏；捏合 → 退回适应
                             if value > 1.25 {
@@ -1036,6 +1051,7 @@ final class PlayerUIView: UIView {
     var onPressEnd: () -> Void = {}
     var onCancelPress: () -> Void = {}     // 捏合打断长按：只停快进，不切显隐
     var onPinch: (CGFloat) -> Void = { _ in }
+    var onSwipeBack: () -> Void = {}       // 左滑返回
 
     // 手势识别器：捏合和长按互斥，杜绝双指撑开误触快进
     private var longPress: UILongPressGestureRecognizer?
@@ -1067,12 +1083,24 @@ final class PlayerUIView: UIView {
         pinch = pin
         addGestureRecognizer(pin)
 
+        // 快速左滑：返回（swipe 是离散手势，不会和长按/捏合争夺）
+        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeBack))
+        swipe.direction = .left
+        swipe.delegate = self
+        addGestureRecognizer(swipe)
+
         // 画中画：把 AVPlayerLayer 交给全局 PipManager 持有 controller
         PipManager.shared.attach(playerLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @objc private func handleTap() { onTap() }
+
+    @objc private func handleSwipeBack() {
+        // 双指捏合时不响应
+        if pinch?.state == .began || pinch?.state == .changed { return }
+        onSwipeBack()
+    }
 
     @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
         // 双指正在捏合 → 忽略长按，避免误触快进
@@ -1097,7 +1125,8 @@ final class PlayerUIView: UIView {
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         // 双指触摸时，长按和点按都不该开始
-        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer {
+        if gestureRecognizer === longPress || gestureRecognizer is UITapGestureRecognizer
+            || gestureRecognizer is UISwipeGestureRecognizer {
             return pinch?.state != .began && pinch?.state != .changed
         }
         return true
@@ -1119,6 +1148,7 @@ struct PlayerLayerView: UIViewRepresentable {
     var onPressEnd: () -> Void = {}
     var onCancelPress: () -> Void = {}
     var onPinch: (CGFloat) -> Void = { _ in }
+    var onSwipeBack: () -> Void = {}
 
     func makeUIView(context: Context) -> PlayerUIView {
         let v = PlayerUIView(player: player)
@@ -1127,6 +1157,7 @@ struct PlayerLayerView: UIViewRepresentable {
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress
         v.onPinch = onPinch
+        v.onSwipeBack = onSwipeBack
         return v
     }
     func updateUIView(_ v: PlayerUIView, context: Context) {
@@ -1136,6 +1167,7 @@ struct PlayerLayerView: UIViewRepresentable {
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress
         v.onPinch = onPinch
+        v.onSwipeBack = onSwipeBack
     }
     private func gravity(_ idx: Int) -> AVLayerVideoGravity {
         switch idx {
