@@ -1039,12 +1039,11 @@ extension PipManager: AVPictureInPictureControllerDelegate {
    updateUIView 又只在绑定变化时调用，导致 layer 尺寸一直是 0 → 黑屏。 */
 final class PlayerUIView: UIView {
     let playerLayer = AVPlayerLayer()
-    var pip: AVPictureInPictureController?
     var gravity: AVLayerVideoGravity = .resizeAspect {
         didSet { playerLayer.videoGravity = gravity }
     }
 
-    weak var pip: PipManager?          // 由 PlayerLayerView 注入的独立实例
+    weak var pipMgr: PipManager?       // 由 PlayerLayerView 注入的独立实例
 
     // 手势回调（由 SwiftUI 注入）
     var onTap: () -> Void = {}
@@ -1095,7 +1094,7 @@ final class PlayerUIView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func attachPip(_ m: PipManager) {
-        pip = m
+        pipMgr = m
         m.attach(playerLayer)
     }
 
