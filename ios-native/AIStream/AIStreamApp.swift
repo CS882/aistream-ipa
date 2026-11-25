@@ -19,7 +19,8 @@ struct AIStreamApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(app)
-                .preferredColorScheme(app.darkMode)
+                .preferredColorScheme(app.darkMode == nil ? nil
+                                      : (app.darkMode! ? .dark : .light))
                 .background(Theme.bg(for: app.darkMode).ignoresSafeArea())
         }
     }

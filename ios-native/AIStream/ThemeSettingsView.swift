@@ -14,7 +14,7 @@ struct ThemeSettingsView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ZStack {
                 Theme.bg.ignoresSafeArea()
                 ScrollView {
