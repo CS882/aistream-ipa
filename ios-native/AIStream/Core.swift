@@ -508,19 +508,32 @@ extension Api {
                                 body: ["username": user, "password": pass, "invite": invite])
         return try JSONDecoder().decode(RegResp.self, from: data)
     }
-    // 直播流地址：必须带 token，走服务端代理
-    static func iptvStreamURL(cid: String) -> URL? {
+    /* 直播流地址。
+       关键（对齐 Android LiveActivity）：站点鉴权走 URL 上的 ?token=，
+       绝不能把 Bearer 头塞给 AVPlayer —— 清单会被服务端改写成第三方 CDN 直链，
+       Authorization 头会一路带给那些源，部分源因此直接拒播。
+       stage 0 = 直连源站；stage 1 = /api/iptv/px 服务端代拉（手机到不了源时用）。 */
+    static func iptvStreamURL(cid: String, proxy: Bool = false) -> URL? {
         var u = base + "/api/iptv/stream?ch="
         u += cid.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? cid
+        let t = Prefs.shared.token
+        if !t.isEmpty {
+            u += "&token=" + (t.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? t)
+        }
+        if proxy {
+            let inner = u.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? u
+            u = base + "/api/iptv/px?u=" + inner
+            if !t.isEmpty {
+                u += "&token=" + (t.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? t)
+            }
+        }
         return URL(string: u)
     }
-    // 直播流请求带 token（AVPlayer 默认不带，需要 URLRequest）
-    static func iptvStreamRequest(cid: String) -> URLRequest? {
-        guard let u = iptvStreamURL(cid: cid) else { return nil }
-        var r = URLRequest(url: u)
-        let t = Prefs.shared.token
-        if !t.isEmpty { r.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
-        return r
+
+    // 只带 UA，不带 Authorization —— 与 Android 的 httpFactory 一致
+    static func iptvStreamHeaders() -> [String: Any] {
+        ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": UA, "Accept": "*/*"],
+         "AVURLAssetAllowsCellularAccessKey": true]
     }
 }
 

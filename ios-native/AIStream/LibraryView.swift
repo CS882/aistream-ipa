@@ -172,7 +172,9 @@ struct LiveView: View {
         .fullScreenCover(item: $playing) { ch in
             PlayerView(url: ch.src ?? "", title: playName,
                        useAuth: !(ch.cid?.value ?? "").isEmpty,
-                       streamCid: ch.cid?.value ?? "")
+                       streamCid: ch.cid?.value ?? "",
+                       streamDirect: ch.direct ?? false,
+                       streamTitle: playName)
         }
     }
 

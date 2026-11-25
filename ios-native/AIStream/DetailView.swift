@@ -419,6 +419,8 @@ struct PlayerView: View {
     var epName: String = ""
     var useAuth: Bool = false        // 直播：URL 需要带 token
     var streamCid: String = ""       // 直播频道 cid
+    var streamDirect = false         // 直播：true=直连源站(mp4/mkv)，false=HLS 清单
+    var streamTitle: String = ""     // 直播：标题（回退时展示"代理"）
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -518,10 +520,13 @@ struct PlayerView: View {
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "play.slash").font(.system(size: 34)).foregroundColor(.white.opacity(0.5))
-                        Text(playFailed ? "这条线路播不了，换一条 m3u8 直链" : "正在加载…")
+                        Text(playFailed
+                             ? (useAuth ? "直播源连不上（直连与代理都失败）" : "这条线路播不了，换一条 m3u8 直链")
+                             : "正在加载…")
                             .font(.system(size: 14)).foregroundColor(.white)
                         if playFailed {
-                            Text("返回上一页换线路，网页解析线路 iOS 不支持")
+                            Text(useAuth ? "源站暂时不可用，换个频道试试"
+                                         : "返回上一页换线路，网页解析线路 iOS 不支持")
                                 .font(.system(size: 12)).foregroundColor(.white.opacity(0.6))
                         }
                     }
@@ -553,7 +558,7 @@ struct PlayerView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Text(title)
+                        Text(useAuth && liveStage > 0 ? "\(streamTitle.isEmpty ? title : streamTitle)（代理）" : title)
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .lineLimit(1)
@@ -749,6 +754,7 @@ struct PlayerView: View {
             hintWork?.cancel()
             hudWork?.cancel()
             doubleHintWork?.cancel()
+            liveWatchdog?.cancel()
             stopSeek()
             if let t = timeObserver, let p = player { p.removeTimeObserver(t) }
             timeObserver = nil
@@ -890,24 +896,9 @@ struct PlayerView: View {
         _ = VolumeManager.shared      // 预热：让隐藏的 MPVolumeView 先进 window
         // 弹幕按片子+集数分别保存，换片不串
         danmaku.load(histId.isEmpty ? title : "\(histId)|\(epName)")
-        // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
-        let avItem: AVPlayerItem
-        if useAuth, let req = Api.iptvStreamRequest(cid: streamCid), let u = req.url {
-            // AVPlayerItem 没有 urlRequest 初始化器；用 AVURLAsset 的 options 带 token
-            var opts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": req.allHTTPHeaderFields ?? [:]]
-            opts["AVURLAssetAllowsCellularAccessKey"] = true
-            let asset = AVURLAsset(url: u, options: opts)
-            avItem = AVPlayerItem(asset: asset)
-        } else {
-            guard let u = URL(string: url) else { playFailed = true; return }
-            avItem = AVPlayerItem(url: u)
-        }
-        /* 播放缓冲：提前缓存约 60 秒内容，弱网下减少卡顿。
-           preferredForwardBufferDuration 是系统 HLS 播放的标准做法，
-           不走自定义 resourceLoader，避免破坏直链与 PiP。 */
-        avItem.preferredForwardBufferDuration = 60
-        let p = AVPlayer(playerItem: avItem)
-        p.automaticallyWaitsToMinimizeStalling = true
+        // 直播首档直连源站；失败由看门狗自动升到 /api/iptv/px 服务端代拉
+        let p = makePlayer(proxy: false)
+        playFailed = false
 
         // 续播：本地有进度且没接近结尾就跳过去
         let saved = Prefs.shared.getProgress(histId, epName)
@@ -916,13 +907,11 @@ struct PlayerView: View {
             p.seek(to: t)
         }
 
-        // 观察播放状态：失败时给提示，不再干黑屏
+        // 观察播放状态：直播失败自动升档到代理，普通片源给提示不再干黑屏
         statusObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime, object: p.currentItem, queue: .main
         ) { _ in
-            // PlayerView 是 struct，不能用 weak self；闭包里只改 @State，
-            // 且 observer 会在 onDisappear 随 view 销毁，不会真的循环引用
-            DispatchQueue.main.async { self.playFailed = true }
+            DispatchQueue.main.async { self.onPlaybackFailed() }
         }
         player = p
         p.rate = speed
@@ -941,6 +930,77 @@ struct PlayerView: View {
         // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
                         ep: epName, pos: saved.pos, dur: saved.dur)
+    }
+
+    // MARK: 直播取流（直连 → 服务端代拉，两级兜底）
+    /* 参考 Android LiveActivity：
+       - 鉴权只用 ?token=，不把 Bearer 头带给第三方 CDN（有的源会拒）
+       - 非直连频道是 HLS 清单，AVURLAsset 不带后缀也能嗅探，但显式给 UA
+       - 直连失败或 15 秒不出画面 → 自动切 /api/iptv/px 由 NAS 代拉 */
+    @State private var liveStage = 0     // 0=直连 1=代理
+    @State private var liveWatchdog: DispatchWorkItem?
+
+    private func makePlayer(proxy: Bool) -> AVPlayer {
+        let avItem: AVPlayerItem
+        if useAuth, let u = Api.iptvStreamURL(cid: streamCid, proxy: proxy) {
+            let asset = AVURLAsset(url: u, options: Api.iptvStreamHeaders())
+            avItem = AVPlayerItem(asset: asset)
+        } else if let u = URL(string: url) {
+            avItem = AVPlayerItem(url: u)
+        } else {
+            playFailed = true
+            avItem = AVPlayerItem(url: URL(string: "about:blank")!)
+        }
+        avItem.preferredForwardBufferDuration = 60
+        let p = AVPlayer(playerItem: avItem)
+        p.automaticallyWaitsToMinimizeStalling = true
+        // 直播看门狗：15 秒还没出画面就升档（只升级一次）
+        if useAuth {
+            liveWatchdog?.cancel()
+            let w = DispatchWorkItem {
+                if self.player?.currentItem?.isPlaybackLikelyToKeepUp != true {
+                    self.onPlaybackFailed()
+                }
+            }
+            liveWatchdog = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: w)
+        }
+        return p
+    }
+
+    private func onPlaybackFailed() {
+        guard useAuth else {
+            playFailed = true
+            return
+        }
+        if liveStage == 0 {
+            // 换代理重播（保留当前播放位置无意义，直播从头开始）
+            liveStage = 1
+            liveWatchdog?.cancel()
+            if let t = timeObserver, let old = player { old.removeTimeObserver(t) }
+            timeObserver = nil
+            if let o = statusObserver { NotificationCenter.default.removeObserver(o) }
+            statusObserver = nil
+            let p = makePlayer(proxy: true)
+            statusObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemFailedToPlayToEndTime, object: p.currentItem, queue: .main
+            ) { _ in
+                DispatchQueue.main.async { self.playFailed = true }
+            }
+            player = p
+            p.play()
+            isPlaying = true
+            playFailed = false
+            // 代理也失败就彻底放弃，给提示
+            timeObserver = p.addPeriodicTimeObserver(
+                forInterval: CMTime(value: 1, timescale: 2), queue: .main
+            ) { time in
+                if !self.seeking { self.progress = time.seconds }
+                if let d = p.currentItem?.duration.seconds, d.isFinite { self.duration = d }
+            }
+        } else {
+            playFailed = true
+        }
     }
 
     private func togglePlay() {
