@@ -711,45 +711,72 @@ struct PlayerView: View {
                         }
                     }
 
-                    /* ZStack 分层：中间三键（快退/播放/快进）绝对居中且放大，
-                       左右两组辅助按钮对称分布 —— 视觉重心落在播放控制上。 */
-                    ZStack {
-                        // 左组：倍速 / 比例
-                        HStack {
-                            HStack(spacing: 14) {
-                                quickButton("gauge.with.dots.needle.50percent", speedLabel,
-                                            on: quickPanel == 1) {
-                                    quickPanel = quickPanel == 1 ? 0 : 1
+                    /* 竖屏一行放不下 7 个按钮（会挤成一坨）：
+                       竖屏分两行 —— 主控制三键一行居中，辅助四键一行居中；
+                       横屏/平板宽度够，仍用 ZStack 单行、主控制居中两侧对称。 */
+                    GeometryReader { geo in
+                        if geo.size.width < 520 {
+                            VStack(spacing: 6) {
+                                HStack(spacing: 34) {
+                                    mainBarButton("gobackward.10", "快退") { nudge(-10) }
+                                    mainPlayButton { togglePlay() }
+                                    mainBarButton("goforward.10", "快进") { nudge(10) }
                                 }
-                                quickButton("aspectratio", scaleNames[scaleIdx],
-                                            on: quickPanel == 2) {
-                                    quickPanel = quickPanel == 2 ? 0 : 2
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-
-                        // 中间：主播放控制，真正居中
-                        HStack(spacing: 30) {
-                            mainBarButton("gobackward.10", "快退") { nudge(-10) }
-                            mainPlayButton { togglePlay() }
-                            mainBarButton("goforward.10", "快进") { nudge(10) }
-                        }
-
-                        // 右组：画中画 / 弹幕
-                        HStack {
-                            Spacer(minLength: 0)
-                            HStack(spacing: 14) {
-                                barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
-                                barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
-                                                          : "bubble.left.and.bubble.right", "弹幕") {
-                                    danmaku.setEnabled(!danmaku.enabled)
-                                    showDanmakuInput = danmaku.enabled
+                                HStack(spacing: 30) {
+                                    quickButton("gauge.with.dots.needle.50percent", speedLabel,
+                                                on: quickPanel == 1) {
+                                        quickPanel = quickPanel == 1 ? 0 : 1
+                                    }
+                                    quickButton("aspectratio", scaleNames[scaleIdx],
+                                                on: quickPanel == 2) {
+                                        quickPanel = quickPanel == 2 ? 0 : 2
+                                    }
+                                    barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
+                                    barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
+                                                              : "bubble.left.and.bubble.right", "弹幕") {
+                                        danmaku.setEnabled(!danmaku.enabled)
+                                        showDanmakuInput = danmaku.enabled
+                                    }
                                 }
                             }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            ZStack {
+                                HStack {
+                                    HStack(spacing: 14) {
+                                        quickButton("gauge.with.dots.needle.50percent", speedLabel,
+                                                    on: quickPanel == 1) {
+                                            quickPanel = quickPanel == 1 ? 0 : 1
+                                        }
+                                        quickButton("aspectratio", scaleNames[scaleIdx],
+                                                    on: quickPanel == 2) {
+                                            quickPanel = quickPanel == 2 ? 0 : 2
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                HStack(spacing: 30) {
+                                    mainBarButton("gobackward.10", "快退") { nudge(-10) }
+                                    mainPlayButton { togglePlay() }
+                                    mainBarButton("goforward.10", "快进") { nudge(10) }
+                                }
+                                HStack {
+                                    Spacer(minLength: 0)
+                                    HStack(spacing: 14) {
+                                        barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
+                                        barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
+                                                                  : "bubble.left.and.bubble.right", "弹幕") {
+                                            danmaku.setEnabled(!danmaku.enabled)
+                                            showDanmakuInput = danmaku.enabled
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(height: 60)
+                            .frame(maxHeight: .infinity, alignment: .center)
                         }
                     }
-                    .frame(height: 56)
+                    .frame(height: 108)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(Capsule().fill(Color.black.opacity(0.45)))
