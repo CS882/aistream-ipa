@@ -457,6 +457,15 @@ struct PlayerView: View {
     @State private var scrubStart: Double = 0
     @State private var scrubTarget: Double = 0
 
+    // 双击暂停 / 再次双击播放
+    @State private var doubleHint = ""
+    @State private var doubleHintWork: DispatchWorkItem?
+
+    // 弹幕（本地发送，站点无弹幕接口）
+    @StateObject private var danmaku = DanmakuStore()
+    @State private var showDanmakuInput = false
+    @State private var danmakuText = ""
+
     // 竖滑：左半屏亮度、右半屏音量
     @State private var hudVisible = false
     @State private var hudValue: Double = 0
@@ -477,6 +486,7 @@ struct PlayerView: View {
                         player: p,
                         scaleIdx: $scaleIdx,
                         onTap: { toggleBar() },
+                        onDoubleTap: { togglePlayByDoubleTap() },
                         onPressBegin: { x in
                             if pressSide == 0 { beginPress(at: x) }
                         },
@@ -551,6 +561,21 @@ struct PlayerView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
+                }
+
+                // 弹幕层：只在开启时画，且不吃触摸（点击/手势仍透传给视频层）
+                if danmaku.enabled {
+                    DanmakuLayer(store: danmaku)
+                        .ignoresSafeArea()
+                }
+
+                // 双击暂停/播放提示
+                if !doubleHint.isEmpty {
+                    Text(doubleHint)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(radius: 8)
+                        .allowsHitTesting(false)
                 }
 
                 // 画中画诊断提示（失败时告诉用户原因）
@@ -676,10 +701,39 @@ struct PlayerView: View {
                         barButton("slider.horizontal.3", "设置") { showMenu = true }
                         barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
                         barButton(scaleIdx == 3 ? "rectangle" : "rectangle.fill", "全屏") { toggleFullscreen() }
+                        // 弹幕开关：关时灰、开时亮
+                        barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
+                                                  : "bubble.left.and.bubble.right", "弹幕") {
+                            danmaku.setEnabled(!danmaku.enabled)
+                            showDanmakuInput = danmaku.enabled
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(Capsule().fill(Color.black.opacity(0.45)))
+
+                    // 弹幕输入：点工具栏「弹幕」展开，回车即发
+                    if danmaku.enabled && showDanmakuInput {
+                        HStack(spacing: 8) {
+                            TextField("发个弹幕…", text: $danmakuText)
+                                .font(.system(size: 13))
+                                .foregroundColor(.white)
+                                .textFieldStyle(.plain)
+                                .submitLabel(.send)
+                                .onSubmit { sendDanmaku() }
+                            Button { sendDanmaku() } label: {
+                                Text("发送").font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12).frame(height: 28)
+                                    .background(Capsule().fill(Theme.accentSoft.opacity(0.85)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.black.opacity(0.45)))
+                        .padding(.horizontal, 16)
+                    }
                 }
                 .padding(.bottom, 20)
                 .transition(.opacity)
@@ -689,11 +743,19 @@ struct PlayerView: View {
         .animation(.easeOut(duration: 0.2), value: showMenu)
         .onAppear { start(); scheduleHide() }
         .onDisappear {
+            // BUG 修复：所有延时任务与 token 观察器都要显式清理，
+            // 否则换片后闭包仍持有旧 self、提示会串到下一部片
             hideWork?.cancel()
+            hintWork?.cancel()
+            hudWork?.cancel()
+            doubleHintWork?.cancel()
             stopSeek()
             if let t = timeObserver, let p = player { p.removeTimeObserver(t) }
             timeObserver = nil
-            NotificationCenter.default.removeObserver(self)
+            if let o = statusObserver {
+                NotificationCenter.default.removeObserver(o)
+                statusObserver = nil
+            }
             let t = player?.currentTime().seconds ?? 0
             let d = player?.currentItem?.duration.seconds ?? 0
             player?.pause()
@@ -815,9 +877,19 @@ struct PlayerView: View {
 
     // MARK: 播放控制
     private func start() {
+        // BUG 修复：重复进入时先拆掉旧观察器/播放器，避免重复注册导致进度乱跳
+        if let t = timeObserver, let old = player { old.removeTimeObserver(t) }
+        timeObserver = nil
+        if let o = statusObserver { NotificationCenter.default.removeObserver(o) }
+        statusObserver = nil
+        player?.pause()
+        stopSeek()
+
         // PiP 硬性前置：先激活后台音频会话（Apple 文档要求）
         AudioSessionManager.activateForPlayback()
         _ = VolumeManager.shared      // 预热：让隐藏的 MPVolumeView 先进 window
+        // 弹幕按片子+集数分别保存，换片不串
+        danmaku.load(histId.isEmpty ? title : "\(histId)|\(epName)")
         // 直播走 /api/iptv/stream?ch=，必须带 token，否则 401
         let avItem: AVPlayerItem
         if useAuth, let req = Api.iptvStreamRequest(cid: streamCid), let u = req.url {
@@ -830,7 +902,12 @@ struct PlayerView: View {
             guard let u = URL(string: url) else { playFailed = true; return }
             avItem = AVPlayerItem(url: u)
         }
+        /* 播放缓冲：提前缓存约 60 秒内容，弱网下减少卡顿。
+           preferredForwardBufferDuration 是系统 HLS 播放的标准做法，
+           不走自定义 resourceLoader，避免破坏直链与 PiP。 */
+        avItem.preferredForwardBufferDuration = 60
         let p = AVPlayer(playerItem: avItem)
+        p.automaticallyWaitsToMinimizeStalling = true
 
         // 续播：本地有进度且没接近结尾就跳过去
         let saved = Prefs.shared.getProgress(histId, epName)
@@ -871,6 +948,28 @@ struct PlayerView: View {
         if isPlaying { p.pause() } else { p.play() }
         isPlaying.toggle()
         scheduleHide()
+    }
+
+    // 双击画面：与单击显隐分开，单击是 tap、双击是 doubleTap（tap 需等 doubleTap 失败才触发）
+    private func togglePlayByDoubleTap() {
+        cancelPress()
+        togglePlay()
+        showDoubleHint(isPlaying ? "▶ 播放" : "⏸ 暂停")
+    }
+
+    private func showDoubleHint(_ s: String) {
+        doubleHint = s
+        doubleHintWork?.cancel()
+        let w = DispatchWorkItem { doubleHint = "" }
+        doubleHintWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: w)
+    }
+
+    private func sendDanmaku() {
+        let t = danmakuText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        danmaku.send(t)
+        danmakuText = ""
     }
 
     private func nudge(_ sec: Double) {
@@ -1189,6 +1288,7 @@ final class PlayerUIView: UIView {
 
     // 手势回调（由 SwiftUI 注入）
     var onTap: () -> Void = {}
+    var onDoubleTap: () -> Void = {}
     var onPressBegin: (CGFloat) -> Void = { _ in }
     var onPressEnd: () -> Void = {}
     var onCancelPress: () -> Void = {}     // 捏合打断长按：只停快进，不切显隐
@@ -1206,6 +1306,7 @@ final class PlayerUIView: UIView {
     // 手势识别器：捏合和长按互斥，杜绝双指撑开误触快进
     private var longPress: UILongPressGestureRecognizer?
     private var pinch: UIPinchGestureRecognizer?
+    private var doubleTap: UITapGestureRecognizer?
     private var pan: UIPanGestureRecognizer?
     private var panMode = 0            // 0=未判定 1=横滑进度 2=竖滑亮度/音量
     private var panStartX: CGFloat = 0
@@ -1219,9 +1320,17 @@ final class PlayerUIView: UIView {
         layer.addSublayer(playerLayer)
         isUserInteractionEnabled = true
 
+        // 双击：暂停/播放。单击需等双击判定失败才触发，否则双击会连带切显隐
+        let dtap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
+        dtap.numberOfTapsRequired = 2
+        dtap.delegate = self
+        doubleTap = dtap
+        addGestureRecognizer(dtap)
+
         // 点按：切换控制层
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
         tap.delegate = self
+        tap.require(toFail: dtap)
         addGestureRecognizer(tap)
 
         // 长按（单指）：快进/快退
@@ -1263,6 +1372,7 @@ final class PlayerUIView: UIView {
     }
 
     @objc private func handleTap() { onTap() }
+    @objc private func handleDoubleTap() { onDoubleTap() }
 
     @objc private func handleEdgeBack(_ g: UIScreenEdgePanGestureRecognizer) {
         // 双指捏合时不响应
@@ -1357,6 +1467,7 @@ struct PlayerLayerView: UIViewRepresentable {
     @Binding var scaleIdx: Int
     // 由 SwiftUI 注入的手势回调（UIKit 原生手势保证双指/单指互斥）
     var onTap: () -> Void = {}
+    var onDoubleTap: () -> Void = {}
     var onPressBegin: (CGFloat) -> Void = { _ in }
     var onPressEnd: () -> Void = {}
     var onCancelPress: () -> Void = {}
@@ -1373,6 +1484,7 @@ struct PlayerLayerView: UIViewRepresentable {
     func makeUIView(context: Context) -> PlayerUIView {
         let v = PlayerUIView(player: player)
         v.onTap = onTap
+        v.onDoubleTap = onDoubleTap
         v.onPressBegin = onPressBegin
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress
@@ -1390,6 +1502,7 @@ struct PlayerLayerView: UIViewRepresentable {
     func updateUIView(_ v: PlayerUIView, context: Context) {
         v.gravity = gravity(scaleIdx)
         v.onTap = onTap
+        v.onDoubleTap = onDoubleTap
         v.onPressBegin = onPressBegin
         v.onPressEnd = onPressEnd
         v.onCancelPress = onCancelPress

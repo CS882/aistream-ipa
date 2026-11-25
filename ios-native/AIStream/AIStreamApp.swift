@@ -4,6 +4,14 @@ import SwiftUI
 struct AIStreamApp: App {
     @StateObject private var app = AppState()
 
+    init() {
+        /* 启动加速：URLSession 的图片缓存从默认 4MB/40MB 提到 64MB/256MB，
+           同一批海报下拉刷新、来回切页时不再重复下载。 */
+        URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024,
+                                   diskCapacity: 256 * 1024 * 1024,
+                                   diskPath: "aistream-images")
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -35,6 +43,11 @@ struct RootView: View {
             Theme.bg.ignoresSafeArea()
             if app.loggedIn {
                 MainView()
+                    // 启动加速：后台预热分类缓存（首页由 HomeView 自己加载）。
+                    // 冷启动先用磁盘缓存渲染，新数据回来静默替换。
+                    .task {
+                        _ = try? await Api.catalog(kind: "movie")
+                    }
             } else {
                 LoginView()
             }

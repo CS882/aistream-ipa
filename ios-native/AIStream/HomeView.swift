@@ -69,6 +69,14 @@ struct HomeView: View {
                     .padding(.bottom, 6)
 
                     ScrollView {
+                        if !isSearchMode && !allShelves.isEmpty {
+                            Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.fgWeak)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 24)
+                                .padding(.top, 8)
+                        }
                         if isSearchMode {
                             // 搜索结果：3 列网格，跟分类页一致
                             LazyVGrid(
@@ -85,7 +93,7 @@ struct HomeView: View {
                         } else {
                             VStack(spacing: 0) {
                                 hero
-                                // 全部 13 个源站都显示，空站给提示而不是直接丢掉
+                                // 只显示有内容的可用资源站，失效/空站直接隐藏
                                 ForEach(Array(allShelves.enumerated()), id: \.offset) { _, s in
                                     shelfRow(s)
                                 }
@@ -93,6 +101,8 @@ struct HomeView: View {
                             .padding(.bottom, 26)
                         }
                     }
+                    // 下拉刷新：重新拉 /api/home 并覆盖缓存
+                    .refreshable { await refresh() }
                 }
             }
         }
@@ -102,7 +112,10 @@ struct HomeView: View {
         }
     }
 
-    private var allShelves: [Shelf] { shelves }
+    // 过滤掉空栏目（失效资源站），只留真正有影视内容的
+    private var allShelves: [Shelf] {
+        shelves.filter { !($0.items ?? []).isEmpty }
+    }
 
     private var isSearchMode: Bool {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
@@ -226,24 +239,41 @@ struct HomeView: View {
         }
     }
 
+    /* 启动加速：先把上次缓存画出来（秒开），再后台静默拉新数据覆盖。
+       下拉刷新走 refresh()，只走网络、不强转 loading，避免整页闪白。 */
     private func load() async {
-        loading = true
+        if let cached = Api.cachedHome() {
+            apply(cached)
+            loading = false
+        }
+        await refresh(silent: !shelves.isEmpty)
+    }
+
+    private func refresh(silent: Bool = false) async {
         err = ""
+        if !silent { loading = true }
         do {
             let r = try await Api.home()
-            // 显示全部源站（含空站），banner 只从有内容的站取
-            let cols = r.columns ?? []
             await MainActor.run {
-                shelves = cols
-                banner = Array(collectBanner(cols).prefix(6))
+                apply(r)
                 loading = false
             }
         } catch {
             await MainActor.run {
-                err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                // 有缓存时静默失败，不把已经能看的内容替换成错误页
+                if shelves.isEmpty {
+                    err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
                 loading = false
             }
         }
+    }
+
+    private func apply(_ r: HomeResp) {
+        // 失效/空站不展示，banner 从有内容的站取
+        let cols = (r.columns ?? []).filter { !($0.items ?? []).isEmpty }
+        shelves = cols
+        banner = Array(collectBanner(cols).prefix(6))
     }
 
     private func collectBanner(_ cols: [Shelf]) -> [Card] {

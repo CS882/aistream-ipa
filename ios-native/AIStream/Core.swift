@@ -127,7 +127,12 @@ struct Card: Decodable, Identifiable {
     }
 
     var idKey: String { rawId?.value ?? "" }
-    var id: String { rawId?.value ?? (title ?? UUID().uuidString) }
+    // 稳定身份：内容相同 id 必须相同，否则 ForEach 每帧重建、列表闪烁。
+    // 优先服务端 id；没有时用 片名|年份|海报 组合，不用 UUID（每次读都变）。
+    var id: String {
+        if let r = rawId?.value, !r.isEmpty { return r }
+        return "\(title ?? "")|\(year?.value ?? "")|\(posterPath ?? "")"
+    }
 
     var scoreText: String {
         guard let s = score?.value, let v = Double(s), v > 0 else { return "" }
@@ -223,13 +228,25 @@ struct Api {
         return try JSONDecoder().decode(LoginResp.self, from: data)
     }
 
+    // 缓存 key 按 kind 区分，切分类时各用各的，不会串数据
+    static func catalogKey(_ kind: String) -> String { "catalog|\(kind)" }
+
+    static func cachedHome() -> HomeResp? { ApiCache.load("home") }
+    static func cachedCatalog(_ kind: String) -> CatalogResp? { ApiCache.load(catalogKey(kind)) }
+
     static func home() async throws -> HomeResp {
-        try await get("/api/home")
+        let data = try await raw("/api/home", method: "GET", body: nil)
+        ApiCache.save(data, "home")
+        return try JSONDecoder().decode(HomeResp.self, from: data)
     }
 
     static func catalog(kind: String, page: Int = 1, limit: Int = 500) async throws -> CatalogResp {
         let k = kind.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? kind
-        return try await get("/api/up/catalog?kind=\(k)&limit=\(limit)&page=\(page)")
+        let data = try await raw("/api/up/catalog?kind=\(k)&limit=\(limit)&page=\(page)",
+                                 method: "GET", body: nil)
+        // 只有第一页全量结果值得缓存；翻页结果不覆盖首屏缓存
+        if page == 1 { ApiCache.save(data, catalogKey(kind)) }
+        return try JSONDecoder().decode(CatalogResp.self, from: data)
     }
 
     static func play(name: String, year: String) async throws -> PlayResp {

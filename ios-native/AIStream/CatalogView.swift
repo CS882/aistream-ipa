@@ -165,6 +165,11 @@ struct CatalogView: View {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else {
                 ScrollView {
+                    Text("下拉刷新 · \(shown.count) 部")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.fgWeak)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
                     // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
@@ -178,6 +183,7 @@ struct CatalogView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 20)
                 }
+                .refreshable { await refresh() }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -211,12 +217,26 @@ struct CatalogView: View {
     }
 
     // MARK: 数据
+    /* 启动加速：先用缓存渲染，再后台静默刷新（切类型时同理由缓存先顶上）。
+       下拉刷新 refresh() 会强制走网络。 */
     private func load() async {
-        loading = true
+        let kind = kinds[kindIdx].0
+        if let cached = Api.cachedCatalog(kind) {
+            await MainActor.run {
+                items = cached.items ?? []
+                loading = false
+            }
+        }
+        await refresh(silent: !items.isEmpty)
+    }
+
+    private func refresh(silent: Bool = false) async {
+        let kind = kinds[kindIdx].0
         err = ""
+        if !silent { loading = true }
         metas = [:]
         do {
-            let r = try await Api.catalog(kind: kinds[kindIdx].0, page: 1, limit: 500)
+            let r = try await Api.catalog(kind: kind, page: 1, limit: 500)
             let list = r.items ?? []
             await MainActor.run {
                 items = list
@@ -225,7 +245,9 @@ struct CatalogView: View {
             await enrich(list)
         } catch {
             await MainActor.run {
-                err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if items.isEmpty {
+                    err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
                 loading = false
             }
         }

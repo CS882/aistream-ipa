@@ -27,7 +27,7 @@ struct CardGridView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("\(title)  ·  \(items.count) 部")
+                        Text("\(title)  ·  \(items.count) 部 · 下拉刷新")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(Theme.fg)
 
@@ -43,6 +43,7 @@ struct CardGridView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
+                .refreshable { await load() }
             }
         }
         .task { if items.isEmpty { await load() } }
