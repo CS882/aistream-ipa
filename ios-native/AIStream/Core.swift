@@ -43,6 +43,16 @@ final class Prefs {
         set { d.set(newValue, forKey: "siteName") }
     }
 
+    // 外观：0=跟随系统 1=深色 2=浅色；背景：预设索引
+    var themeMode: Int {
+        get { d.object(forKey: "themeMode") == nil ? 0 : d.integer(forKey: "themeMode") }
+        set { d.set(newValue, forKey: "themeMode") }
+    }
+    var themeBg: Int {
+        get { d.object(forKey: "themeBg") == nil ? 0 : d.integer(forKey: "themeBg") }
+        set { d.set(newValue, forKey: "themeBg") }
+    }
+
     /* 续播进度：key = 片 id + 集名。本地存一份，退出播放器立刻能接着看，
        不依赖服务端历史接口的刷新延迟。 */
     func progressKey(_ id: String, _ ep: String) -> String { "prog|\(id)|\(ep)" }

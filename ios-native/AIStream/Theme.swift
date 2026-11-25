@@ -1,23 +1,76 @@
 import SwiftUI
 
-// tvOS 风格配色，与 Android 版保持一致
+/* tvOS 风格主题：默认深色与 Android 一致；支持浅色外观 + 预设背景。
+   色值按 isLight 动态计算，所有 Theme.xxx 调用点无需改动。 */
 enum Theme {
-    static let bg = Color(hex: 0x05060A)
-    static let card = Color(hex: 0x15151C)
-    static let card2 = Color(hex: 0x1E1F27)
-    static let fg = Color(hex: 0xF7F7FA)
-    static let fgDim = Color(hex: 0xB9BAC4)
-    static let fgWeak = Color(hex: 0x7A7C88)
+    // 由 AppState 在切换主题时写入；true=浅色外观
+    static var isLight = false
+    static var bgIndex = 0
+
+    // MARK: 预设背景（5 套）
+    struct Preset: Identifiable {
+        let id: Int
+        let name: String
+        let dark: [Color]
+        let light: [Color]
+    }
+
+    static let presets: [Preset] = [
+        Preset(id: 0, name: "深空黑", dark: [Color(hex: 0x05060A), Color(hex: 0x12131A)],
+               light: [Color(hex: 0xF5F6FA), Color(hex: 0xE8EAF2)]),
+        Preset(id: 1, name: "暗夜蓝", dark: [Color(hex: 0x070B18), Color(hex: 0x14213D)],
+               light: [Color(hex: 0xEAF1FF), Color(hex: 0xD4E3FF)]),
+        Preset(id: 2, name: "紫罗兰", dark: [Color(hex: 0x120A1E), Color(hex: 0x2A1740)],
+               light: [Color(hex: 0xF3EBFF), Color(hex: 0xE3D4FF)]),
+        Preset(id: 3, name: "极光绿", dark: [Color(hex: 0x06130F), Color(hex: 0x123528)],
+               light: [Color(hex: 0xEAF7F1), Color(hex: 0xD3EEDF)]),
+        Preset(id: 4, name: "暖阳橘", dark: [Color(hex: 0x1A1008), Color(hex: 0x3A2410)],
+               light: [Color(hex: 0xFFF4E8), Color(hex: 0xFFE3C4)])
+    ]
+
+    private static var preset: Preset {
+        presets[min(max(0, bgIndex), presets.count - 1)]
+    }
+
+    // 背景渐变（供页面底层用）；保留 bg 为纯色兼容旧代码
+    static var bgGradient: LinearGradient {
+        let p = preset
+        return LinearGradient(colors: isLight ? p.light : p.dark,
+                              startPoint: .top, endPoint: .bottom)
+    }
+
+    static var bg: Color { isLight ? preset.light[0] : preset.dark[0] }
+
+    // 供 App 入口显式指定外观（system=nil）
+    static func bg(for dark: Bool?) -> Color {
+        if let d = dark { return d ? preset.dark[0] : preset.light[0] }
+        return bg
+    }
+
+    static var card: Color {
+        isLight ? Color.white.opacity(0.92) : Color(hex: 0x15151C)
+    }
+    static var card2: Color {
+        isLight ? Color(hex: 0xF0F1F6) : Color(hex: 0x1E1F27)
+    }
+    static var fg: Color { isLight ? Color(hex: 0x1A1A22) : Color(hex: 0xF7F7FA) }
+    static var fgDim: Color { isLight ? Color(hex: 0x4A4A56) : Color(hex: 0xB9BAC4) }
+    static var fgWeak: Color { isLight ? Color(hex: 0x7A7A88) : Color(hex: 0x7A7C88) }
     static let accent = Color(hex: 0x8B6CFF)
     static let accentSoft = Color(hex: 0xB45CFF)
     static let accentPink = Color(hex: 0xF060C0)
-    static let line = Color.white.opacity(0.09)
+    static var line: Color { isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.09) }
 
     static let grad = LinearGradient(
         colors: [Color(hex: 0x8F7BFF), Color(hex: 0xB45CFF), Color(hex: 0xF060C0)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
+        startPoint: .topLeading, endPoint: .bottomTrailing
     )
+
+    // 切换主题时由 AppState 调用，统一更新静态值
+    static func apply(isLight light: Bool, bgIndex bg: Int) {
+        isLight = light
+        bgIndex = bg
+    }
 }
 
 extension Color {

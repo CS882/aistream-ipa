@@ -10,14 +10,17 @@ struct AIStreamApp: App {
         URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024,
                                    diskCapacity: 256 * 1024 * 1024,
                                    diskPath: "aistream-images")
+        // 启动时恢复主题静态值（跟随系统时用当前界面风格）
+        AppState.syncTheme(dark: AppState.resolveDark(Prefs.shared.themeMode),
+                           bg: Prefs.shared.themeBg)
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(app)
-                .preferredColorScheme(.dark)
-                .background(Theme.bg.ignoresSafeArea())
+                .preferredColorScheme(app.darkMode)
+                .background(Theme.bg(for: app.darkMode).ignoresSafeArea())
         }
     }
 }
@@ -28,6 +31,30 @@ final class AppState: ObservableObject {
     @Published var tab: Int = 0
     @Published var userName: String = Prefs.shared.user
     @Published var siteName: String = Prefs.shared.siteName
+    // 主题：nil 跟随系统，true 深色，false 浅色
+    @Published var darkMode: Bool? = AppState.resolveDark(Prefs.shared.themeMode)
+    @Published var themeBg: Int = Prefs.shared.themeBg
+    // 切换主题时递增，RootView 用 .id() 强制重建（静态色值不会自动触发重绘）
+    @Published var themeVersion: Int = 0
+
+    static func resolveDark(_ mode: Int) -> Bool? {
+        mode == 1 ? true : (mode == 2 ? false : nil)
+    }
+
+    // 根据"当前生效的是深色还是浅色"计算主题静态色值
+    static func syncTheme(dark: Bool?, bg: Int) {
+        let isLight = dark == false
+        Theme.apply(isLight: isLight, bgIndex: bg)
+    }
+
+    func setTheme(mode: Int, bg: Int) {
+        Prefs.shared.themeMode = mode
+        Prefs.shared.themeBg = bg
+        darkMode = AppState.resolveDark(mode)
+        themeBg = bg
+        AppState.syncTheme(dark: darkMode, bg: bg)
+        themeVersion += 1
+    }
 
     func logout() {
         Prefs.shared.clear()
@@ -40,7 +67,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
+            Theme.bgGradient.ignoresSafeArea()
             if app.loggedIn {
                 MainView()
                     // 启动加速：后台预热分类缓存（首页由 HomeView 自己加载）。
@@ -52,6 +79,8 @@ struct RootView: View {
                 LoginView()
             }
         }
+        // 主题切换后强制重建整棵树，让所有 Theme.xxx 静态色值重新读取
+        .id(app.themeVersion)
     }
 }
 

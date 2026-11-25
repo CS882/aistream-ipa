@@ -14,6 +14,7 @@ struct MeView: View {
     @State private var showRedeem = false
     @State private var showInvite = false
     @State private var showPwd = false
+    @State private var showTheme = false
 
     private var vipText: String {
         let lv = me?.vip?.level?.value ?? "0"
@@ -50,6 +51,7 @@ struct MeView: View {
                     row("积分兑换", "gift") { showRedeem = true }
                     row("邀请好友得积分", "person.2.badge.gearshape") { showInvite = true }
                     row("修改密码", "lock") { showPwd = true }
+                    row("外观主题", "paintbrush") { showTheme = true }
                     row("退出登录", "arrow.right.square", danger: true) {
                         app.logout()
                     }
@@ -78,6 +80,7 @@ struct MeView: View {
         .sheet(isPresented: $showRedeem) { RedeemView() }
         .sheet(isPresented: $showInvite) { InviteView(code: inviteCode) }
         .sheet(isPresented: $showPwd) { ChangePasswordView() }
+        .sheet(isPresented: $showTheme) { ThemeSettingsView() }
     }
 
     private var accountCard: some View {
