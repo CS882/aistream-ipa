@@ -449,7 +449,6 @@ struct PlayerView: View {
     @State private var hintWork: DispatchWorkItem?
 
     // 弹窗菜单：倍速 / 缩放 / 线路信息
-    @State private var showMenu = false
     @State private var speed: Float = 1.0
     // 工具栏就地选择：0=收起 1=倍速 2=画面比例
     @State private var quickPanel = 0
@@ -651,12 +650,6 @@ struct PlayerView: View {
                         .allowsHitTesting(false)
                 }
 
-                if showMenu {
-                    Color.black.opacity(0.5)
-                        .onTapGesture { showMenu = false }
-                    menuPanel
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
             }
 
             // 底部：进度条 + 工具栏
@@ -718,26 +711,46 @@ struct PlayerView: View {
                         }
                     }
 
-                    HStack(spacing: 16) {
-                        barButton("gobackward.10", "快退") { nudge(-10) }
-                        barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
-                        barButton("goforward.10", "快进") { nudge(10) }
-                        // 倍速 / 比例：显示当前值，点开就地选
-                        quickButton(speedLabel, on: quickPanel == 1) {
-                            quickPanel = quickPanel == 1 ? 0 : 1
+                    /* ZStack 分层：中间三键（快退/播放/快进）绝对居中且放大，
+                       左右两组辅助按钮对称分布 —— 视觉重心落在播放控制上。 */
+                    ZStack {
+                        // 左组：倍速 / 比例
+                        HStack {
+                            HStack(spacing: 14) {
+                                quickButton("gauge.with.dots.needle.50percent", speedLabel,
+                                            on: quickPanel == 1) {
+                                    quickPanel = quickPanel == 1 ? 0 : 1
+                                }
+                                quickButton("aspectratio", scaleNames[scaleIdx],
+                                            on: quickPanel == 2) {
+                                    quickPanel = quickPanel == 2 ? 0 : 2
+                                }
+                            }
+                            Spacer(minLength: 0)
                         }
-                        quickButton(scaleNames[scaleIdx], on: quickPanel == 2) {
-                            quickPanel = quickPanel == 2 ? 0 : 2
+
+                        // 中间：主播放控制，真正居中
+                        HStack(spacing: 30) {
+                            mainBarButton("gobackward.10", "快退") { nudge(-10) }
+                            mainPlayButton { togglePlay() }
+                            mainBarButton("goforward.10", "快进") { nudge(10) }
                         }
-                        barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
-                        // 弹幕开关：关时灰、开时亮
-                        barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
-                                                  : "bubble.left.and.bubble.right", "弹幕") {
-                            danmaku.setEnabled(!danmaku.enabled)
-                            showDanmakuInput = danmaku.enabled
+
+                        // 右组：画中画 / 弹幕
+                        HStack {
+                            Spacer(minLength: 0)
+                            HStack(spacing: 14) {
+                                barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
+                                barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
+                                                          : "bubble.left.and.bubble.right", "弹幕") {
+                                    danmaku.setEnabled(!danmaku.enabled)
+                                    showDanmakuInput = danmaku.enabled
+                                }
+                            }
                         }
                     }
-                    .padding(.horizontal, 14)
+                    .frame(height: 56)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(Capsule().fill(Color.black.opacity(0.45)))
                     // 选中倍速或比例后自动收起选择条
@@ -772,7 +785,6 @@ struct PlayerView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: showBar)
-        .animation(.easeOut(duration: 0.2), value: showMenu)
         .animation(.easeOut(duration: 0.18), value: quickPanel)
         .onAppear { start(); scheduleHide() }
         .onDisappear {
@@ -849,157 +861,57 @@ struct PlayerView: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    // 工具栏上的当前值按钮（显示 "1×" / "适应"）
-    private func quickButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+    // 工具栏按钮：图标 + 当前值（跟其它 barButton 同款），选中时图标高亮
+    private func quickButton(_ icon: String, _ value: String, on: Bool,
+                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: on ? .semibold : .medium))
-                .foregroundColor(on ? .white : .white.opacity(0.75))
-                .frame(minWidth: 42)
-                .frame(height: 32)
-                .background(
-                    Group {
-                        if on { Capsule().fill(Theme.grad) }
-                        else { Capsule().fill(Color.white.opacity(0.12)) }
-                    }
-                )
-                .overlay(Capsule().strokeBorder(Color.white.opacity(on ? 0.4 : 0.12),
-                                                lineWidth: on ? 1 : 0.5))
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(on ? Theme.accentSoft : .white)
+                Text(value)
+                    .font(.system(size: 9))
+                    .foregroundColor(on ? Theme.accentSoft : .white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 36, minHeight: 36)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())
     }
 
-    private var menuPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // 标题栏：渐变图标 + 主标题 + 英文副标 + 关闭
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(Theme.grad)
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("播放设置")
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundColor(.white)
-                    Text("PLAYBACK SETTINGS")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.38))
-                        .kerning(1.1)
-                }
-                Spacer()
-                Button { showMenu = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.75))
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(PressScaleStyle())
-            }
-            .padding(.bottom, 20)
-
-            // 倍速
-            settingCard(icon: "gauge.with.dots.needle.50percent",
-                        title: "播放速度", subtitle: "选择适合的播放倍速") {
-                HStack(spacing: 7) {
-                    ForEach(Array(speedOptions.enumerated()), id: \.offset) { _, opt in
-                        speedChip(opt)
-                    }
-                }
-            }
-
-            // 画面比例
-            settingCard(icon: "rectangle.on.rectangle.angled",
-                        title: "画面比例", subtitle: "适应 / 拉伸 / 裁剪 / 全屏") {
-                HStack(spacing: 7) {
-                    ForEach(0..<scaleNames.count, id: \.self) { i in
-                        scaleChip(i)
-                    }
-                }
-            }
-
-            // 弹幕开关
-            settingCard(icon: "bubble.left.and.bubble.right",
-                        title: "弹幕", subtitle: "本地弹幕，可发送与显示") {
-                Toggle(isOn: Binding(
-                    get: { danmaku.enabled },
-                    set: { danmaku.setEnabled($0) }
-                )) {
-                    Text(danmaku.enabled ? "已开启" : "已关闭")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .toggleStyle(SwitchToggleStyle(tint: Theme.accentSoft))
-            }
-
-            Spacer().frame(height: 18)
-
-            Button { showMenu = false } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                    Text("完成")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(Capsule().fill(Theme.grad))
-                .shadow(color: Theme.accentSoft.opacity(0.35), radius: 12, y: 4)
-            }
-            .buttonStyle(PressScaleStyle())
-        }
-        .padding(22)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.55), radius: 30, y: 12)
-        )
-        .padding(.horizontal, 22)
-    }
-
-    // 分组卡片：图标渐变 + 标题副标 + 内容
-    private func settingCard<Content: View>(icon: String, title: String, subtitle: String,
-                                            @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+    // 中间主控制：快退/快进图标更大，带玻璃圆底
+    private func mainBarButton(_ icon: String, _ label: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.grad)
-                    .frame(width: 20)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                    Text(subtitle)
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.4))
-                }
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 52, height: 40)
+                    .background(Circle().fill(Color.white.opacity(0.08)))
+                Text(label)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.7))
             }
-            content()
         }
-        .padding(15)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .fill(Color.white.opacity(0.055))
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            }
-        )
-        .padding(.bottom, 11)
+        .buttonStyle(PressScaleStyle())
     }
 
-    // 选中态：渐变填充 + 白色描边 + 柔光；未选中：半透明玻璃
+    // 中间播放键：最大、紫粉渐变实心，视觉焦点
+    private func mainPlayButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 26, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Theme.grad))
+                .shadow(color: Theme.accentSoft.opacity(0.5), radius: 14, y: 4)
+        }
+        .buttonStyle(PressScaleStyle())
+    }
+
+    // 就地选择条里的选项：选中渐变+描边，未选中玻璃底
     private func speedChip(_ opt: (value: Double, label: String)) -> some View {
         let on = speed == Float(opt.value)
         return Button {
