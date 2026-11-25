@@ -106,46 +106,81 @@ final class DanmakuStore: ObservableObject {
     }
 }
 
+// 拆成小视图，避免 GeometryReader + TimelineView + ForEach 嵌套导致类型检查超时
 struct DanmakuLayer: View {
     @ObservedObject var store: DanmakuStore
 
     var body: some View {
         GeometryReader { g in
-            TimelineView(.animation) { ctx in
-                ZStack(alignment: .topLeading) {
-                    ForEach(store.visible(at: ctx.date, width: g.size.width), id: \.item.id) { pair in
-                        Text(pair.item.text)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(pair.item.color)
-                            .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
-                            .offset(x: pair.x, y: 52 + CGFloat(pair.item.record.lane) * 34)
-                    }
-                }
-            }
+            DanmakuTimeline(store: store, width: g.size.width)
         }
         .allowsHitTesting(false)
+    }
+}
+
+private struct DanmakuTimeline: View {
+    @ObservedObject var store: DanmakuStore
+    let width: CGFloat
+
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            DanmakuFrame(store: store, width: width, date: ctx.date)
+        }
+    }
+}
+
+private struct DanmakuFrame: View {
+    @ObservedObject var store: DanmakuStore
+    let width: CGFloat
+    let date: Date
+
+    private var items: [(item: DanmakuItem, x: CGFloat)] {
+        store.visible(at: date, width: width)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(items, id: \.item.id) { pair in
+                DanmakuText(item: pair.item, x: pair.x)
+            }
+        }
+    }
+}
+
+private struct DanmakuText: View {
+    let item: DanmakuItem
+    let x: CGFloat
+
+    private var y: CGFloat { 52 + CGFloat(item.record.lane) * 34 }
+
+    var body: some View {
+        Text(item.text)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(item.color)
+            .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
+            .offset(x: x, y: y)
     }
 }
 
 extension Prefs {
     var danmakuOn: Bool {
         get {
-            if d.object(forKey: "danmakuOn") == nil { return true }
-            return d.bool(forKey: "danmakuOn")
+            if defaults.object(forKey: "danmakuOn") == nil { return true }
+            return defaults.bool(forKey: "danmakuOn")
         }
-        set { d.set(newValue, forKey: "danmakuOn") }
+        set { defaults.set(newValue, forKey: "danmakuOn") }
     }
 
     private func danmakuKey(_ k: String) -> String { "danmaku|\(k)" }
 
     func danmakuRecords(_ k: String) -> [DanmakuRecord] {
-        guard let data = d.data(forKey: danmakuKey(k)) else { return [] }
+        guard let data = defaults.data(forKey: danmakuKey(k)) else { return [] }
         return (try? JSONDecoder().decode([DanmakuRecord].self, from: data)) ?? []
     }
 
     func saveDanmaku(_ list: [DanmakuRecord], key: String) {
         if let data = try? JSONEncoder().encode(list) {
-            d.set(data, forKey: danmakuKey(key))
+            defaults.set(data, forKey: danmakuKey(key))
         }
     }
 }

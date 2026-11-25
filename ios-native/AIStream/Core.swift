@@ -58,6 +58,9 @@ final class Prefs {
 
     var configured: Bool { !token.isEmpty }
 
+    // 供同文件 extension 读写（Swift 的 private 仅限声明体内部，extension 访问不到）
+    var defaults: UserDefaults { d }
+
     func clear() {
         ["token", "user", "pass", "siteName"].forEach { d.removeObject(forKey: $0) }
     }
