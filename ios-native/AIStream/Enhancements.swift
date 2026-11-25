@@ -41,7 +41,8 @@ struct DanmakuRecord: Codable {
 }
 
 struct DanmakuItem: Identifiable {
-    let id = UUID()
+    // 稳定 id：visible() 每帧重建 item，用 UUID 会导致每帧全部重绘闪烁
+    var id: String { "\(record.at)|\(record.lane)|\(record.text)" }
     let record: DanmakuRecord
     var born: Date { Date(timeIntervalSince1970: record.at) }
     var color: Color {
@@ -154,7 +155,7 @@ private struct DanmakuText: View {
     private var y: CGFloat { 52 + CGFloat(item.record.lane) * 34 }
 
     var body: some View {
-        Text(item.text)
+        Text(item.record.text)
             .font(.system(size: 16, weight: .semibold))
             .foregroundColor(item.color)
             .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
