@@ -10,6 +10,7 @@ struct CatalogView: View {
     @State private var items: [Card] = []
     @State private var metas: [String: Meta] = [:]
     @State private var loading = true
+    @State private var refreshing = false
     @State private var err = ""
 
     @State private var fYear = ""
@@ -165,11 +166,19 @@ struct CatalogView: View {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else {
                 ScrollView {
-                    Text("下拉刷新 · \(shown.count) 部")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.fgWeak)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
+                    HStack(spacing: 6) {
+                        if refreshing {
+                            ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
+                            Text("正在刷新影片…")
+                                .foregroundColor(Theme.accentSoft)
+                        } else {
+                            Text("下拉刷新 · \(shown.count) 部")
+                                .foregroundColor(Theme.fgWeak)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
                     // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
@@ -234,22 +243,36 @@ struct CatalogView: View {
         let kind = kinds[kindIdx].0
         err = ""
         if !silent { loading = true }
+        // 显示"正在刷新"至少 0.6 秒，避免网络太快时提示一闪而过
+        await MainActor.run { refreshing = true }
+        let started = Date()
         metas = [:]
         do {
             let r = try await Api.catalog(kind: kind, page: 1, limit: 500)
             let list = r.items ?? []
+            await alwaysShowHint(started)
             await MainActor.run {
                 items = list
                 loading = false
+                refreshing = false
             }
             await enrich(list)
         } catch {
+            await alwaysShowHint(started)
             await MainActor.run {
                 if items.isEmpty {
                     err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
                 loading = false
+                refreshing = false
             }
+        }
+    }
+
+    private func alwaysShowHint(_ started: Date) async {
+        let left = 0.6 - Date().timeIntervalSince(started)
+        if left > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }
     }
 

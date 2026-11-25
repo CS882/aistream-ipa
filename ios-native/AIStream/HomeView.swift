@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var banner: [Card] = []
     @State private var cur = 0
     @State private var loading = true
+    @State private var refreshing = false
     @State private var err = ""
     @State private var pick: Card?
     // 首页直接搜索：回车即出结果，不跳分类页
@@ -70,12 +71,20 @@ struct HomeView: View {
 
                     ScrollView {
                         if !isSearchMode && !allShelves.isEmpty {
-                            Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
-                                .font(.system(size: 11))
-                                .foregroundColor(Theme.fgWeak)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 24)
-                                .padding(.top, 8)
+                            HStack(spacing: 6) {
+                                if refreshing {
+                                    ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
+                                    Text("正在刷新资源站…")
+                                        .foregroundColor(Theme.accentSoft)
+                                } else {
+                                    Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
+                                        .foregroundColor(Theme.fgWeak)
+                                }
+                            }
+                            .font(.system(size: 11))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
                         }
                         if isSearchMode {
                             // 搜索结果：3 列网格，跟分类页一致
@@ -252,20 +261,34 @@ struct HomeView: View {
     private func refresh(silent: Bool = false) async {
         err = ""
         if !silent { loading = true }
+        // 显示"正在刷新"至少 0.6 秒，避免网络太快时提示一闪而过
+        await MainActor.run { refreshing = true }
+        let started = Date()
         do {
             let r = try await Api.home()
+            await alwaysShowHint(started)
             await MainActor.run {
                 apply(r)
                 loading = false
+                refreshing = false
             }
         } catch {
+            await alwaysShowHint(started)
             await MainActor.run {
                 // 有缓存时静默失败，不把已经能看的内容替换成错误页
                 if shelves.isEmpty {
                     err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
                 loading = false
+                refreshing = false
             }
+        }
+    }
+
+    private func alwaysShowHint(_ started: Date) async {
+        let left = 0.6 - Date().timeIntervalSince(started)
+        if left > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }
     }
 
