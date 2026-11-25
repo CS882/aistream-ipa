@@ -795,90 +795,195 @@ struct PlayerView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: 弹窗菜单（拆成小视图，避免编译器类型检查超时）
+    // MARK: - Apple TV 风格播放设置面板
+    /* 拆成小视图 + 条件分支：避免 LinearGradient/Color 混用触发类型检查超时。
+       倍速用固定标签，不用 Double 插值（否则显示成 0.750000x）。 */
+    private let speedOptions: [(value: Double, label: String)] = [
+        (0.75, "0.75×"), (1.0, "1×"), (1.25, "1.25×"), (1.5, "1.5×"), (2.0, "2×")
+    ]
+
     private var menuPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("播放设置")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.bottom, 12)
+            // 标题栏：渐变图标 + 主标题 + 英文副标 + 关闭
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Theme.grad)
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("播放设置")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("PLAYBACK SETTINGS")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.38))
+                        .kerning(1.1)
+                }
+                Spacer()
+                Button { showMenu = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(PressScaleStyle())
+            }
+            .padding(.bottom, 20)
 
-            speedRow
-            scaleRow
+            // 倍速
+            settingCard(icon: "gauge.with.dots.needle.50percent",
+                        title: "播放速度", subtitle: "选择适合的播放倍速") {
+                HStack(spacing: 7) {
+                    ForEach(Array(speedOptions.enumerated()), id: \.offset) { _, opt in
+                        speedChip(opt)
+                    }
+                }
+            }
+
+            // 画面比例
+            settingCard(icon: "rectangle.on.rectangle.angled",
+                        title: "画面比例", subtitle: "适应 / 拉伸 / 裁剪 / 全屏") {
+                HStack(spacing: 7) {
+                    ForEach(0..<scaleNames.count, id: \.self) { i in
+                        scaleChip(i)
+                    }
+                }
+            }
+
+            // 弹幕开关
+            settingCard(icon: "bubble.left.and.bubble.right",
+                        title: "弹幕", subtitle: "本地弹幕，可发送与显示") {
+                Toggle(isOn: Binding(
+                    get: { danmaku.enabled },
+                    set: { danmaku.setEnabled($0) }
+                )) {
+                    Text(danmaku.enabled ? "已开启" : "已关闭")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .toggleStyle(SwitchToggleStyle(tint: Theme.accentSoft))
+            }
+
+            Spacer().frame(height: 18)
 
             Button { showMenu = false } label: {
-                Text("完成")
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                    Text("完成")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(Capsule().fill(Theme.grad))
+                .shadow(color: Theme.accentSoft.opacity(0.35), radius: 12, y: 4)
+            }
+            .buttonStyle(PressScaleStyle())
+        }
+        .padding(22)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.55), radius: 30, y: 12)
+        )
+        .padding(.horizontal, 22)
+    }
+
+    // 分组卡片：图标渐变 + 标题副标 + 内容
+    private func settingCard<Content: View>(icon: String, title: String, subtitle: String,
+                                            @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 40)
-                    .background(Capsule().fill(Color.purple.opacity(0.85)))
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 16)
-        }
-        .padding(20)
-        .background(RoundedRectangle(cornerRadius: 20).fill(Color(hex: 0x15151C)))
-        .padding(.horizontal, 30)
-    }
-
-    private var speedRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("倍速")
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
-            HStack(spacing: 6) {
-                ForEach([0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { sp in
-                    speedChip(sp)
+                    .foregroundStyle(Theme.grad)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
+            content()
         }
-        .padding(.vertical, 8)
+        .padding(15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(Color.white.opacity(0.055))
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            }
+        )
+        .padding(.bottom, 11)
     }
 
-    private func speedChip(_ sp: Double) -> some View {
-        Button {
-            speed = Float(sp)
-            player?.rate = Float(sp)
+    // 选中态：渐变填充 + 白色描边 + 柔光；未选中：半透明玻璃
+    private func speedChip(_ opt: (value: Double, label: String)) -> some View {
+        let on = speed == Float(opt.value)
+        return Button {
+            speed = Float(opt.value)
+            player?.rate = Float(opt.value)
         } label: {
-            Text(sp == 1.0 ? "1x" : "\(sp)x")
-                .font(.system(size: 12))
-                .foregroundColor(speed == Float(sp) ? .white : .white.opacity(0.5))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(speed == Float(sp) ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
+            Text(opt.label)
+                .font(.system(size: 12, weight: on ? .semibold : .medium))
+                .foregroundColor(on ? .white : .white.opacity(0.62))
+                .frame(minWidth: 48)
+                .frame(height: 32)
+                .background(
+                    Group {
+                        if on { Capsule().fill(Theme.grad) }
+                        else { Capsule().fill(Color.white.opacity(0.08)) }
+                    }
+                )
+                .overlay(
+                    Capsule().strokeBorder(Color.white.opacity(on ? 0.45 : 0.1),
+                                           lineWidth: on ? 1.2 : 0.5)
+                )
+                .shadow(color: on ? Theme.accentSoft.opacity(0.35) : .clear, radius: 7, y: 2)
         }
-        .buttonStyle(.plain)
-    }
-
-    private var scaleRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("画面比例")
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
-            HStack(spacing: 6) {
-                ForEach(0..<scaleNames.count, id: \.self) { i in
-                    scaleChip(i)
-                }
-            }
-        }
-        .padding(.vertical, 8)
+        .buttonStyle(PressScaleStyle())
     }
 
     private func scaleChip(_ i: Int) -> some View {
-        Button {
+        let on = scaleIdx == i
+        return Button {
             scaleIdx = i
             if i == 3 { showBar = false; hideWork?.cancel() }
             else { exitImmersiveIfNeeded() }
         } label: {
             Text(scaleNames[i])
-                .font(.system(size: 12))
-                .foregroundColor(scaleIdx == i ? .white : .white.opacity(0.5))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(scaleIdx == i ? Color.purple.opacity(0.8) : Color.white.opacity(0.08)))
+                .font(.system(size: 12, weight: on ? .semibold : .medium))
+                .foregroundColor(on ? .white : .white.opacity(0.62))
+                .frame(minWidth: 48)
+                .frame(height: 32)
+                .background(
+                    Group {
+                        if on { Capsule().fill(Theme.grad) }
+                        else { Capsule().fill(Color.white.opacity(0.08)) }
+                    }
+                )
+                .overlay(
+                    Capsule().strokeBorder(Color.white.opacity(on ? 0.45 : 0.1),
+                                           lineWidth: on ? 1.2 : 0.5)
+                )
+                .shadow(color: on ? Theme.accentSoft.opacity(0.35) : .clear, radius: 7, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleStyle())
     }
 
     // MARK: 播放控制
