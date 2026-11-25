@@ -435,6 +435,7 @@ struct PlayerView: View {
     @State private var progress: Double = 0
     @State private var duration: Double = 0
     @State private var timeObserver: Any?
+    @State private var danmakuObserver: Any?
     @State private var seeking = false
     // 画中画
     @StateObject private var pip = PipManager()
@@ -450,6 +451,8 @@ struct PlayerView: View {
     // 弹窗菜单：倍速 / 缩放 / 线路信息
     @State private var showMenu = false
     @State private var speed: Float = 1.0
+    // 工具栏就地选择：0=收起 1=倍速 2=画面比例
+    @State private var quickPanel = 0
 
     // 手势起点：区分左右半屏的按压快进快退
     @State private var pressSide = 0   // -1 左（快退） 1 右（快进）
@@ -699,13 +702,34 @@ struct PlayerView: View {
                     }
                     .padding(.horizontal, 24)
 
-                    HStack(spacing: 20) {
+                    /* 倍速/画面比例就地选择条：点工具栏对应按钮展开，选完自动收起。
+                       放在工具栏正上方，跟快进按钮同一块区域，不用再进弹窗。 */
+                    if quickPanel == 1 {
+                        quickStrip {
+                            ForEach(Array(speedOptions.enumerated()), id: \.offset) { _, opt in
+                                speedChip(opt)
+                            }
+                        }
+                    } else if quickPanel == 2 {
+                        quickStrip {
+                            ForEach(0..<scaleNames.count, id: \.self) { i in
+                                scaleChip(i)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 16) {
                         barButton("gobackward.10", "快退") { nudge(-10) }
                         barButton(isPlaying ? "pause.fill" : "play.fill", "") { togglePlay() }
                         barButton("goforward.10", "快进") { nudge(10) }
-                        barButton("slider.horizontal.3", "设置") { showMenu = true }
+                        // 倍速 / 比例：显示当前值，点开就地选
+                        quickButton(speedLabel, on: quickPanel == 1) {
+                            quickPanel = quickPanel == 1 ? 0 : 1
+                        }
+                        quickButton(scaleNames[scaleIdx], on: quickPanel == 2) {
+                            quickPanel = quickPanel == 2 ? 0 : 2
+                        }
                         barButton("rectangle.on.rectangle", "画中画") { pip.toggle() }
-                        barButton(scaleIdx == 3 ? "rectangle" : "rectangle.fill", "全屏") { toggleFullscreen() }
                         // 弹幕开关：关时灰、开时亮
                         barButton(danmaku.enabled ? "bubble.left.and.bubble.right.fill"
                                                   : "bubble.left.and.bubble.right", "弹幕") {
@@ -713,9 +737,12 @@ struct PlayerView: View {
                             showDanmakuInput = danmaku.enabled
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(Capsule().fill(Color.black.opacity(0.45)))
+                    // 选中倍速或比例后自动收起选择条
+                    .onChange(of: speed) { _ in if quickPanel == 1 { quickPanel = 0 } }
+                    .onChange(of: scaleIdx) { _ in if quickPanel == 2 { quickPanel = 0 } }
 
                     // 弹幕输入：点工具栏「弹幕」展开，回车即发
                     if danmaku.enabled && showDanmakuInput {
@@ -746,6 +773,7 @@ struct PlayerView: View {
         }
         .animation(.easeOut(duration: 0.18), value: showBar)
         .animation(.easeOut(duration: 0.2), value: showMenu)
+        .animation(.easeOut(duration: 0.18), value: quickPanel)
         .onAppear { start(); scheduleHide() }
         .onDisappear {
             // BUG 修复：所有延时任务与 token 观察器都要显式清理，
@@ -758,6 +786,8 @@ struct PlayerView: View {
             stopSeek()
             if let t = timeObserver, let p = player { p.removeTimeObserver(t) }
             timeObserver = nil
+            if let t = danmakuObserver, let p = player { p.removeTimeObserver(t) }
+            danmakuObserver = nil
             if let o = statusObserver {
                 NotificationCenter.default.removeObserver(o)
                 statusObserver = nil
@@ -801,6 +831,43 @@ struct PlayerView: View {
     private let speedOptions: [(value: Double, label: String)] = [
         (0.75, "0.75×"), (1.0, "1×"), (1.25, "1.25×"), (1.5, "1.5×"), (2.0, "2×")
     ]
+
+    // 当前倍速文字（工具栏按钮用），避免 0.750000 那种浮点插值
+    private var speedLabel: String {
+        speedOptions.first { abs(Float($0.value) - speed) < 0.01 }?.label ?? "1×"
+    }
+
+    // 工具栏就地选择条：玻璃胶囊包一圈，点击不透传
+    private func quickStrip<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 8) {
+            content()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(Color.black.opacity(0.55)))
+        .padding(.horizontal, 14)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    // 工具栏上的当前值按钮（显示 "1×" / "适应"）
+    private func quickButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: on ? .semibold : .medium))
+                .foregroundColor(on ? .white : .white.opacity(0.75))
+                .frame(minWidth: 42)
+                .frame(height: 32)
+                .background(
+                    Group {
+                        if on { Capsule().fill(Theme.grad) }
+                        else { Capsule().fill(Color.white.opacity(0.12)) }
+                    }
+                )
+                .overlay(Capsule().strokeBorder(Color.white.opacity(on ? 0.4 : 0.12),
+                                                lineWidth: on ? 1 : 0.5))
+        }
+        .buttonStyle(PressScaleStyle())
+    }
 
     private var menuPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1031,6 +1098,13 @@ struct PlayerView: View {
             if !self.seeking { self.progress = time.seconds }
             if let d = p.currentItem?.duration.seconds, d.isFinite { self.duration = d }
         }
+        // 弹幕专用高频时钟（1/30 秒）：只更新 danmaku.playhead，
+        // 订阅者是 DanmakuLayer，重绘范围小，不影响进度条与主界面
+        danmakuObserver = p.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 30), queue: .main
+        ) { time in
+            self.danmaku.playhead = time.seconds
+        }
         // 不要用 report(pos:0) 起步 —— 那会把刚读出来的续播进度覆盖成 0。
         // 历史记录进页面时写一条即可（保留原 pos），退出时再补真实进度。
         Api.postHistory(id: histId, title: histTitle, poster: histPoster, year: histYear,
@@ -1103,6 +1177,9 @@ struct PlayerView: View {
                 if !self.seeking { self.progress = time.seconds }
                 if let d = p.currentItem?.duration.seconds, d.isFinite { self.duration = d }
             }
+            danmakuObserver = p.addPeriodicTimeObserver(
+                forInterval: CMTime(value: 1, timescale: 30), queue: .main
+            ) { time in self.danmaku.playhead = time.seconds }
         } else {
             playFailed = true
         }
@@ -1206,6 +1283,7 @@ struct PlayerView: View {
     private func toggleBar() {
         showBar.toggle()
         if showBar { scheduleHide() }
+        else { quickPanel = 0 }
     }
 
     // 播放后自动隐藏工具栏（3 秒），替代原来"要等很久才消失"

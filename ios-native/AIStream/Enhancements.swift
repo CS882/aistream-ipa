@@ -37,6 +37,7 @@ struct DanmakuRecord: Codable {
     let text: String
     let lane: Int
     let color: Int
+    // 视频时间轴上的秒数（不是真实时间戳）—— 暂停冻结、快进跟随、重开可复现
     let at: TimeInterval
 }
 
@@ -59,6 +60,8 @@ struct DanmakuItem: Identifiable {
 final class DanmakuStore: ObservableObject {
     @Published var records: [DanmakuRecord] = []
     @Published var enabled: Bool = Prefs.shared.danmakuOn
+    // 当前播放秒数，由 PlayerView 的时间观察器写入；弹幕位置完全跟着它走
+    @Published var playhead: Double = 0
 
     private var lane = 0
     private var key = ""
@@ -66,40 +69,39 @@ final class DanmakuStore: ObservableObject {
     func load(_ k: String) {
         key = k
         enabled = Prefs.shared.danmakuOn
-        let saved = Prefs.shared.danmakuRecords(k)
-        if saved.isEmpty {
-            // 系统提示，不冒充用户/站点弹幕
-            records = [DanmakuRecord(text: "本地弹幕已开启 · 点下方「弹」发送",
-                                     lane: 1, color: 0,
-                                     at: Date().addingTimeInterval(0.6).timeIntervalSince1970)]
-        } else {
-            records = saved
-        }
+        records = Prefs.shared.danmakuRecords(k)
+        // 系统提示不持久化：用 playhead+0.3 作为位置，几秒后自然飘走
+        let tip = DanmakuRecord(text: Self.tipText, lane: 1, color: 0, at: playhead + 0.3)
+        records.append(tip)
     }
 
     func send(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         lane = (lane + 1) % 5
+        // 关键：记录"视频第几秒发的"，不是真实时间。否则暂停/拖动都错位、重开看不到。
         let r = DanmakuRecord(text: String(t.prefix(60)), lane: lane,
-                              color: Int.random(in: 0..<5), at: Date().timeIntervalSince1970)
+                              color: Int.random(in: 0..<5), at: playhead)
         records.append(r)
         if records.count > 80 { records.removeFirst(records.count - 80) }
-        Prefs.shared.saveDanmaku(records, key: key)
+        // 系统提示（at≈0.3 那条）不写盘，避免下次进来重复出现
+        Prefs.shared.saveDanmaku(records.filter { $0.text != Self.tipText }, key: key)
     }
+
+    static let tipText = "本地弹幕已开启 · 点下方「弹」发送"
 
     func setEnabled(_ on: Bool) {
         enabled = on
         Prefs.shared.danmakuOn = on
     }
 
-    // 一条弹幕约 8~11 秒飘过屏幕；只返回当前还在画面内的
-    func visible(at now: Date, width: CGFloat) -> [(item: DanmakuItem, x: CGFloat)] {
+    // 暂停时 playhead 不动 → 弹幕原地冻结；拖动后按新进度重算位置
+    func visible(width: CGFloat) -> [(item: DanmakuItem, x: CGFloat)] {
         let speed: CGFloat = 78
         var out: [(item: DanmakuItem, x: CGFloat)] = []
         for r in records {
-            let age = now.timeIntervalSince1970 - r.at
-            guard age >= 0 else { continue }
+            let age = playhead - r.at
+            guard age >= 0, age < 40 else { continue }   // 超出窗口的不再计算
             let x = width - CGFloat(age) * speed
             if x > -320 { out.append((DanmakuItem(record: r), x)) }
         }
@@ -124,19 +126,16 @@ private struct DanmakuTimeline: View {
     let width: CGFloat
 
     var body: some View {
-        TimelineView(.animation) { ctx in
-            DanmakuFrame(store: store, width: width, date: ctx.date)
-        }
+        DanmakuFrame(store: store, width: width)
     }
 }
 
 private struct DanmakuFrame: View {
     @ObservedObject var store: DanmakuStore
     let width: CGFloat
-    let date: Date
 
     private var items: [(item: DanmakuItem, x: CGFloat)] {
-        store.visible(at: date, width: width)
+        store.visible(width: width)
     }
 
     var body: some View {
