@@ -12,7 +12,7 @@ struct AIStreamApp: App {
                                    diskPath: "aistream-images")
         // 启动时恢复主题静态值（跟随系统时用当前界面风格）
         AppState.syncTheme(dark: AppState.resolveDark(Prefs.shared.themeMode),
-                           bg: Prefs.shared.themeBg)
+                           bg: Prefs.shared.themeBg, style: Prefs.shared.themeStyle)
     }
 
     var body: some Scene {
@@ -35,6 +35,7 @@ final class AppState: ObservableObject {
     // 主题：nil 跟随系统，true 深色，false 浅色
     @Published var darkMode: Bool? = AppState.resolveDark(Prefs.shared.themeMode)
     @Published var themeBg: Int = Prefs.shared.themeBg
+    @Published var themeStyle: Int = Prefs.shared.themeStyle
     // 切换主题时递增，RootView 用 .id() 强制重建（静态色值不会自动触发重绘）
     @Published var themeVersion: Int = 0
 
@@ -43,17 +44,20 @@ final class AppState: ObservableObject {
     }
 
     // 根据"当前生效的是深色还是浅色"计算主题静态色值
-    static func syncTheme(dark: Bool?, bg: Int) {
+    static func syncTheme(dark: Bool?, bg: Int, style: Int) {
         let isLight = dark == false
-        Theme.apply(isLight: isLight, bgIndex: bg)
+        Theme.apply(isLight: isLight, bgIndex: bg, appleTV: style == 1)
     }
 
-    func setTheme(mode: Int, bg: Int) {
+    func setTheme(mode: Int, bg: Int, style: Int? = nil) {
+        let st = style ?? themeStyle
         Prefs.shared.themeMode = mode
         Prefs.shared.themeBg = bg
+        Prefs.shared.themeStyle = st
         darkMode = AppState.resolveDark(mode)
         themeBg = bg
-        AppState.syncTheme(dark: darkMode, bg: bg)
+        themeStyle = st
+        AppState.syncTheme(dark: darkMode, bg: bg, style: st)
         themeVersion += 1
     }
 

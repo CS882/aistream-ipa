@@ -52,6 +52,11 @@ final class Prefs {
         get { d.object(forKey: "themeBg") == nil ? 0 : d.integer(forKey: "themeBg") }
         set { d.set(newValue, forKey: "themeBg") }
     }
+    // 界面风格：0=标准（紫粉），1=Apple TV（玻璃 + 银蓝 + 大圆角）
+    var themeStyle: Int {
+        get { d.object(forKey: "themeStyle") == nil ? 0 : d.integer(forKey: "themeStyle") }
+        set { d.set(newValue, forKey: "themeStyle") }
+    }
 
     /* 续播进度：key = 片 id + 集名。本地存一份，退出播放器立刻能接着看，
        不依赖服务端历史接口的刷新延迟。 */

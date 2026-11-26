@@ -6,6 +6,9 @@ enum Theme {
     // 由 AppState 在切换主题时写入；true=浅色外观
     static var isLight = false
     static var bgIndex = 0
+    // Apple TV 整体风格：玻璃卡片 + 银蓝强调 + 更大圆角，不只是换背景
+    static var appleTV = false
+    static var radius: CGFloat { appleTV ? 24 : 14 }
 
     // MARK: 预设背景（5 套）
     struct Preset: Identifiable {
@@ -48,28 +51,44 @@ enum Theme {
     }
 
     static var card: Color {
-        isLight ? Color.white.opacity(0.92) : Color(hex: 0x15151C)
+        if appleTV { return isLight ? Color.white.opacity(0.82) : Color.white.opacity(0.09) }
+        return isLight ? Color.white.opacity(0.92) : Color(hex: 0x15151C)
     }
     static var card2: Color {
-        isLight ? Color(hex: 0xF0F1F6) : Color(hex: 0x1E1F27)
+        if appleTV { return isLight ? Color.white.opacity(0.92) : Color.white.opacity(0.14) }
+        return isLight ? Color(hex: 0xF0F1F6) : Color(hex: 0x1E1F27)
     }
     static var fg: Color { isLight ? Color(hex: 0x1A1A22) : Color(hex: 0xF7F7FA) }
     static var fgDim: Color { isLight ? Color(hex: 0x4A4A56) : Color(hex: 0xB9BAC4) }
     static var fgWeak: Color { isLight ? Color(hex: 0x7A7A88) : Color(hex: 0x7A7C88) }
-    static let accent = Color(hex: 0x8B6CFF)
-    static let accentSoft = Color(hex: 0xB45CFF)
-    static let accentPink = Color(hex: 0xF060C0)
-    static var line: Color { isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.09) }
+    static var accent: Color { appleTV ? Color(hex: 0x6BA6FF) : Color(hex: 0x8B6CFF) }
+    static var accentSoft: Color { appleTV ? Color(hex: 0xA8D2FF) : Color(hex: 0xB45CFF) }
+    static var accentPink: Color { appleTV ? Color(hex: 0x9FD0FF) : Color(hex: 0xF060C0) }
+    static var line: Color {
+        if appleTV { return isLight ? Color.black.opacity(0.10) : Color.white.opacity(0.22) }
+        return isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.09)
+    }
 
-    static let grad = LinearGradient(
-        colors: [Color(hex: 0x8F7BFF), Color(hex: 0xB45CFF), Color(hex: 0xF060C0)],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    static var grad: LinearGradient {
+        if appleTV {
+            return LinearGradient(
+                colors: isLight
+                    ? [Color(hex: 0x2D6CFF), Color(hex: 0x6BA6FF), Color(hex: 0x9FD0FF)]
+                    : [Color(hex: 0xE8F2FF), Color(hex: 0x9EC8FF), Color(hex: 0x6BA6FF)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        }
+        return LinearGradient(
+            colors: [Color(hex: 0x8F7BFF), Color(hex: 0xB45CFF), Color(hex: 0xF060C0)],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+    }
 
     // 切换主题时由 AppState 调用，统一更新静态值
-    static func apply(isLight light: Bool, bgIndex bg: Int) {
+    static func apply(isLight light: Bool, bgIndex bg: Int, appleTV: Bool = false) {
         isLight = light
         bgIndex = bg
+        Theme.appleTV = appleTV
     }
 }
 
@@ -98,7 +117,7 @@ extension View {
         )
     }
 
-    func cardBg(radius: CGFloat = 14) -> some View {
+    func cardBg(radius: CGFloat = Theme.radius) -> some View {
         self.background(
             RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Theme.card)
         )
