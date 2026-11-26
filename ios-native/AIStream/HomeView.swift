@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var cur = 0
     @State private var loading = true
     @State private var refreshing = false
+    @State private var contentFade = true    // 刷新后内容柔和淡入（初始可见）
     @State private var err = ""
     @State private var pick: Card?
     // 首页直接搜索：回车即出结果，不跳分类页
@@ -113,6 +114,9 @@ struct HomeView: View {
                                     shelfRow(s)
                                 }
                             }
+                            // 刷新后整片内容柔和淡入，不瞬间替换
+                            .opacity(contentFade ? 1 : 0)
+                            .animation(.easeOut(duration: 0.4), value: contentFade)
                             .padding(.bottom, 26)
                         }
                     }
@@ -274,10 +278,14 @@ struct HomeView: View {
             let r = try await Api.home()
             await alwaysShowHint(started)
             await MainActor.run {
+                contentFade = false          // 先透明，避免新数据瞬间替换生硬
                 apply(r)
                 loading = false
                 withAnimation(.easeInOut(duration: 0.35)) { refreshing = false }
             }
+            // 下一帧再淡入，形成柔和过渡
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await MainActor.run { withAnimation(.easeOut(duration: 0.4)) { contentFade = true } }
         } catch {
             await alwaysShowHint(started)
             await MainActor.run {

@@ -9,6 +9,7 @@ struct CardGridView: View {
     @State private var items: [Card] = []
     @State private var loading = true
     @State private var refreshing = false
+    @State private var contentFade = true    // 刷新后内容柔和淡入（初始可见）
     @State private var err = ""
     @State private var pick: Card?
 
@@ -56,6 +57,8 @@ struct CardGridView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
+                    .opacity(contentFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4), value: contentFade)
                 }
                 .refreshable { await refresh() }
             }
@@ -87,11 +90,14 @@ struct CardGridView: View {
             let list = try await loader()
             await alwaysShowHint(started)
             await MainActor.run {
+                contentFade = false
                 items = list
                 err = ""
                 loading = false
                 withAnimation(.easeInOut(duration: 0.35)) { refreshing = false }
             }
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await MainActor.run { withAnimation(.easeOut(duration: 0.4)) { contentFade = true } }
         } catch {
             await alwaysShowHint(started)
             await MainActor.run {

@@ -11,6 +11,7 @@ struct CatalogView: View {
     @State private var metas: [String: Meta] = [:]
     @State private var loading = true
     @State private var refreshing = false
+    @State private var contentFade = true    // 刷新后内容柔和淡入（初始可见）
     @State private var err = ""
 
     @State private var fYear = ""
@@ -196,6 +197,8 @@ struct CatalogView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 20)
+                    .opacity(contentFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.4), value: contentFade)
                 }
                 .refreshable { await refresh() }
             }
@@ -257,10 +260,13 @@ struct CatalogView: View {
             let list = r.items ?? []
             await alwaysShowHint(started)
             await MainActor.run {
+                contentFade = false
                 items = list
                 loading = false
                 withAnimation(.easeInOut(duration: 0.35)) { refreshing = false }
             }
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await MainActor.run { withAnimation(.easeOut(duration: 0.4)) { contentFade = true } }
             await enrich(list)
         } catch {
             await alwaysShowHint(started)
