@@ -166,19 +166,21 @@ struct CatalogView: View {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else {
                 ScrollView {
-                    HStack(spacing: 6) {
-                        if refreshing {
+                    ZStack(alignment: .leading) {
+                        Text("下拉刷新 · \(shown.count) 部")
+                            .foregroundColor(Theme.fgWeak)
+                            .opacity(refreshing ? 0 : 1)
+                        HStack(spacing: 6) {
                             ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
                             Text("正在刷新影片…")
                                 .foregroundColor(Theme.accentSoft)
-                        } else {
-                            Text("下拉刷新 · \(shown.count) 部")
-                                .foregroundColor(Theme.fgWeak)
                         }
+                        .opacity(refreshing ? 1 : 0)
                     }
                     .font(.system(size: 11))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
                     .padding(.horizontal, 18)
+                    .animation(.easeInOut(duration: 0.35), value: refreshing)
                     // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
@@ -270,7 +272,7 @@ struct CatalogView: View {
     }
 
     private func alwaysShowHint(_ started: Date) async {
-        let left = 0.6 - Date().timeIntervalSince(started)
+        let left = 0.5 - Date().timeIntervalSince(started)
         if left > 0 {
             try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }

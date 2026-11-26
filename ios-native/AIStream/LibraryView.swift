@@ -32,14 +32,15 @@ struct CardGridView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 6) {
-                            if refreshing {
-                                ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
-                                Text("正在刷新…")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(Theme.accentSoft)
-                            }
+                            ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
+                            Text("正在刷新…")
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.accentSoft)
                         }
                         .frame(height: 16)
+                        .opacity(refreshing ? 1 : 0)
+                        .offset(y: refreshing ? 0 : -4)
+                        .animation(.easeInOut(duration: 0.35), value: refreshing)
                         Text("\(title)  ·  \(items.count) 部 · 下拉刷新")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(Theme.fg)
@@ -102,7 +103,7 @@ struct CardGridView: View {
     }
 
     private func alwaysShowHint(_ started: Date) async {
-        let left = 0.6 - Date().timeIntervalSince(started)
+        let left = 0.5 - Date().timeIntervalSince(started)
         if left > 0 {
             try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }

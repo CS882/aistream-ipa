@@ -71,20 +71,23 @@ struct HomeView: View {
 
                     ScrollView {
                         if !isSearchMode && !allShelves.isEmpty {
-                            HStack(spacing: 6) {
-                                if refreshing {
+                            // ZStack + opacity 过渡：刷新提示柔和淡入淡出，不生硬跳变
+                            ZStack(alignment: .leading) {
+                                Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
+                                    .foregroundColor(Theme.fgWeak)
+                                    .opacity(refreshing ? 0 : 1)
+                                HStack(spacing: 6) {
                                     ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
                                     Text("正在刷新资源站…")
                                         .foregroundColor(Theme.accentSoft)
-                                } else {
-                                    Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
-                                        .foregroundColor(Theme.fgWeak)
                                 }
+                                .opacity(refreshing ? 1 : 0)
                             }
                             .font(.system(size: 11))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 8)
+                            .animation(.easeInOut(duration: 0.35), value: refreshing)
                         }
                         if isSearchMode {
                             // 搜索结果：3 列网格，跟分类页一致
@@ -286,7 +289,7 @@ struct HomeView: View {
     }
 
     private func alwaysShowHint(_ started: Date) async {
-        let left = 0.6 - Date().timeIntervalSince(started)
+        let left = 0.5 - Date().timeIntervalSince(started)
         if left > 0 {
             try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }
