@@ -81,7 +81,7 @@ struct CardGridView: View {
 
     // 下拉刷新：保留列表，只显示顶部缓冲文字；提示至少 0.6 秒
     private func refresh() async {
-        await MainActor.run { refreshing = true }
+        await MainActor.run { withAnimation(.easeInOut(duration: 0.45)) { refreshing = true } }
         let started = Date()
         do {
             let list = try await loader()
@@ -90,14 +90,14 @@ struct CardGridView: View {
                 items = list
                 err = ""
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
         } catch {
             await alwaysShowHint(started)
             await MainActor.run {
                 err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
         }
     }

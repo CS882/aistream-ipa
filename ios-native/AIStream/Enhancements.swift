@@ -37,7 +37,7 @@ struct DanmakuRecord: Codable {
     let text: String
     let lane: Int
     let color: Int
-    // 视频时间轴上的秒数（不是真实时间戳）—— 暂停冻结、快进跟随、重开可复现
+    // 视频时间轴上的秒数 —— 暂停冻结、快进跟随、重开可复现
     let at: TimeInterval
 }
 
@@ -79,9 +79,11 @@ final class DanmakuStore: ObservableObject {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         lane = (lane + 1) % 5
-        // 关键：记录"视频第几秒发的"，不是真实时间。否则暂停/拖动都错位、重开看不到。
+        /* 关键：记录"视频第几秒发的"，不是真实时间。否则暂停/拖动都错位、重开看不到。
+           at 取 playhead-1.5：让弹幕一发出就从屏幕内侧开始飘，
+           否则 age=0、x=屏宽，正好在右边缘外；视频暂停时 playhead 不动会一直看不到。 */
         let r = DanmakuRecord(text: String(t.prefix(60)), lane: lane,
-                              color: Int.random(in: 0..<5), at: playhead)
+                              color: Int.random(in: 0..<5), at: max(0, playhead - 1.5))
         records.append(r)
         if records.count > 80 { records.removeFirst(records.count - 80) }
         // 系统提示（at≈0.3 那条）不写盘，避免下次进来重复出现

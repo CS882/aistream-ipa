@@ -170,17 +170,20 @@ struct CatalogView: View {
                         Text("下拉刷新 · \(shown.count) 部")
                             .foregroundColor(Theme.fgWeak)
                             .opacity(refreshing ? 0 : 1)
+                            .offset(y: refreshing ? -6 : 0)
                         HStack(spacing: 6) {
                             ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
                             Text("正在刷新影片…")
                                 .foregroundColor(Theme.accentSoft)
                         }
                         .opacity(refreshing ? 1 : 0)
+                        .offset(y: refreshing ? 0 : 6)
                     }
                     .font(.system(size: 11))
-                    .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
+                    .frame(maxWidth: .infinity, height: 18, alignment: .leading)
                     .padding(.horizontal, 18)
-                    .animation(.easeInOut(duration: 0.35), value: refreshing)
+                    .clipped()
+                    .animation(.easeInOut(duration: 0.45), value: refreshing)
                     // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
@@ -246,7 +249,7 @@ struct CatalogView: View {
         err = ""
         if !silent { loading = true }
         // 显示"正在刷新"至少 0.6 秒，避免网络太快时提示一闪而过
-        await MainActor.run { refreshing = true }
+        await MainActor.run { withAnimation(.easeInOut(duration: 0.45)) { refreshing = true } }
         let started = Date()
         metas = [:]
         do {
@@ -256,7 +259,7 @@ struct CatalogView: View {
             await MainActor.run {
                 items = list
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
             await enrich(list)
         } catch {
@@ -266,7 +269,7 @@ struct CatalogView: View {
                     err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
         }
     }

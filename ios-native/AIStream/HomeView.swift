@@ -71,23 +71,27 @@ struct HomeView: View {
 
                     ScrollView {
                         if !isSearchMode && !allShelves.isEmpty {
-                            // ZStack + opacity 过渡：刷新提示柔和淡入淡出，不生硬跳变
+                            /* 刷新提示：透明度 + 轻微位移双过渡，固定高度不跳动。
+                               状态赋值在 refresh() 里包了 withAnimation，淡入淡出更顺。 */
                             ZStack(alignment: .leading) {
                                 Text("已加载 \(allShelves.count) 个可用资源站 · 下拉刷新")
                                     .foregroundColor(Theme.fgWeak)
                                     .opacity(refreshing ? 0 : 1)
+                                    .offset(y: refreshing ? -6 : 0)
                                 HStack(spacing: 6) {
                                     ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
                                     Text("正在刷新资源站…")
                                         .foregroundColor(Theme.accentSoft)
                                 }
                                 .opacity(refreshing ? 1 : 0)
+                                .offset(y: refreshing ? 0 : 6)
                             }
                             .font(.system(size: 11))
-                            .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
+                            .frame(maxWidth: .infinity, height: 18, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 8)
-                            .animation(.easeInOut(duration: 0.35), value: refreshing)
+                            .clipped()
+                            .animation(.easeInOut(duration: 0.45), value: refreshing)
                         }
                         if isSearchMode {
                             // 搜索结果：3 列网格，跟分类页一致
@@ -265,7 +269,7 @@ struct HomeView: View {
         err = ""
         if !silent { loading = true }
         // 显示"正在刷新"至少 0.6 秒，避免网络太快时提示一闪而过
-        await MainActor.run { refreshing = true }
+        await MainActor.run { withAnimation(.easeInOut(duration: 0.45)) { refreshing = true } }
         let started = Date()
         do {
             let r = try await Api.home()
@@ -273,7 +277,7 @@ struct HomeView: View {
             await MainActor.run {
                 apply(r)
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
         } catch {
             await alwaysShowHint(started)
@@ -283,7 +287,7 @@ struct HomeView: View {
                     err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
                 loading = false
-                refreshing = false
+                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
             }
         }
     }

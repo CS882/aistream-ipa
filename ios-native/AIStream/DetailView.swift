@@ -469,6 +469,7 @@ struct PlayerView: View {
     @StateObject private var danmaku = DanmakuStore()
     @State private var showDanmakuInput = false
     @State private var danmakuText = ""
+    @FocusState private var danmakuFocused: Bool   // 弹幕输入聚焦时不自动隐藏工具栏
 
     // 竖滑：左半屏亮度、右半屏音量
     @State private var hudVisible = false
@@ -768,6 +769,7 @@ struct PlayerView: View {
                                                                   : "bubble.left.and.bubble.right", "弹幕") {
                                             danmaku.setEnabled(!danmaku.enabled)
                                             showDanmakuInput = danmaku.enabled
+                                            hideWork?.cancel()   // 展开输入框期间不自动隐藏
                                         }
                                     }
                                 }
@@ -784,16 +786,22 @@ struct PlayerView: View {
                     .onChange(of: speed) { _ in if quickPanel == 1 { quickPanel = 0 } }
                     .onChange(of: scaleIdx) { _ in if quickPanel == 2 { quickPanel = 0 } }
 
-                    // 弹幕输入：点工具栏「弹幕」展开，回车即发
+                    // 弹幕输入：点工具栏「弹幕」展开，回车或「发送」按钮都能发
                     if danmaku.enabled && showDanmakuInput {
                         HStack(spacing: 8) {
                             TextField("发个弹幕…", text: $danmakuText)
+                                .focused($danmakuFocused)
                                 .font(.system(size: 13))
                                 .foregroundColor(.white)
                                 .textFieldStyle(.plain)
                                 .submitLabel(.send)
                                 .onSubmit { sendDanmaku() }
-                            Button { sendDanmaku() } label: {
+                                // 打字期间不让控制层自动隐藏，否则输入框会被收走
+                                .onChange(of: danmakuText) { _ in hideWork?.cancel() }
+                            Button {
+                                danmakuFocused = false
+                                sendDanmaku()
+                            } label: {
                                 Text("发送").font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 12).frame(height: 28)
@@ -805,6 +813,11 @@ struct PlayerView: View {
                         .padding(.vertical, 7)
                         .background(Capsule().fill(Color.black.opacity(0.45)))
                         .padding(.horizontal, 16)
+                        // 键盘弹起时整体下移，避免输入框被键盘遮住
+                        .padding(.bottom, danmakuFocused ? 6 : 0)
+                        .onChange(of: danmakuFocused) { on in
+                            if on { hideWork?.cancel() }
+                        }
                     }
                 }
                 .padding(.bottom, 20)
@@ -1225,11 +1238,18 @@ struct PlayerView: View {
         else { quickPanel = 0 }
     }
 
-    // 播放后自动隐藏工具栏（3 秒），替代原来"要等很久才消失"
+    // 播放后自动隐藏工具栏（3 秒）。
+    // 关键：弹幕输入框/快捷面板展开或键盘弹起时绝不自动隐藏，
+    // 否则用户输入到一半控制层被收走，看起来像"弹幕输入框自己返回了"。
     private func scheduleHide() {
         hideWork?.cancel()
+        guard !showDanmakuInput, !danmakuFocused, quickPanel == 0 else { return }
         let w = DispatchWorkItem {
-            withAnimation(.easeOut(duration: 0.2)) { showBar = false }
+            withAnimation(.easeOut(duration: 0.2)) {
+                if !self.showDanmakuInput, !self.danmakuFocused, self.quickPanel == 0 {
+                    showBar = false
+                }
+            }
         }
         hideWork = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: w)
