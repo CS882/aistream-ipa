@@ -87,7 +87,8 @@ struct HomeView: View {
                                 .offset(y: refreshing ? 0 : 6)
                             }
                             .font(.system(size: 11))
-                            .frame(maxWidth: .infinity, height: 18, alignment: .leading)
+                            .frame(height: 18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 8)
                             .clipped()
