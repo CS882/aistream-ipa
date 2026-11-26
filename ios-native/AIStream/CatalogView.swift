@@ -166,25 +166,24 @@ struct CatalogView: View {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else {
                 ScrollView {
-                    ZStack(alignment: .leading) {
-                        Text("下拉刷新 · \(shown.count) 部")
-                            .foregroundColor(Theme.fgWeak)
-                            .opacity(refreshing ? 0 : 1)
-                            .offset(y: refreshing ? -6 : 0)
+                    // 与收藏页一致：刷新提示独占一行占位，淡入淡出 + 轻微位移
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
                             Text("正在刷新影片…")
                                 .foregroundColor(Theme.accentSoft)
                         }
+                        .frame(height: 16)
                         .opacity(refreshing ? 1 : 0)
-                        .offset(y: refreshing ? 0 : 6)
+                        .offset(y: refreshing ? 0 : -4)
+                        .animation(.easeInOut(duration: 0.35), value: refreshing)
+
+                        Text("下拉刷新 · \(shown.count) 部")
+                            .foregroundColor(Theme.fgWeak)
                     }
                     .font(.system(size: 11))
-                    .frame(height: 18)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
-                    .clipped()
-                    .animation(.easeInOut(duration: 0.45), value: refreshing)
                     // 按最小 100pt 自适应：iPhone 竖屏 3 列，横屏/平板列数自动变多
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 12)],
@@ -250,7 +249,7 @@ struct CatalogView: View {
         err = ""
         if !silent { loading = true }
         // 显示"正在刷新"至少 0.6 秒，避免网络太快时提示一闪而过
-        await MainActor.run { withAnimation(.easeInOut(duration: 0.45)) { refreshing = true } }
+        await MainActor.run { withAnimation(.easeInOut(duration: 0.35)) { refreshing = true } }
         let started = Date()
         metas = [:]
         do {
@@ -260,7 +259,7 @@ struct CatalogView: View {
             await MainActor.run {
                 items = list
                 loading = false
-                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
+                withAnimation(.easeInOut(duration: 0.35)) { refreshing = false }
             }
             await enrich(list)
         } catch {
@@ -270,7 +269,7 @@ struct CatalogView: View {
                     err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
                 loading = false
-                withAnimation(.easeInOut(duration: 0.45)) { refreshing = false }
+                withAnimation(.easeInOut(duration: 0.35)) { refreshing = false }
             }
         }
     }
