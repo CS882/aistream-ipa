@@ -8,6 +8,7 @@ struct CardGridView: View {
 
     @State private var items: [Card] = []
     @State private var loading = true
+    @State private var refreshing = false
     @State private var err = ""
     @State private var pick: Card?
 
@@ -15,9 +16,12 @@ struct CardGridView: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            if loading {
+            /* BUG 修复：原来 loading=true 时整个 ScrollView 被换成 ProgressView，
+               下拉刷新一触发就把 refreshable 所在视图销毁 → 刷新中断/卡住。
+               现在只有"首次加载且无内容"才显示转圈；刷新时列表始终在。 */
+            if loading && items.isEmpty {
                 ProgressView().tint(Theme.accentSoft)
-            } else if !err.isEmpty {
+            } else if !err.isEmpty && items.isEmpty {
                 Text(err).font(.system(size: 13)).foregroundColor(Theme.fgWeak)
             } else if items.isEmpty {
                 VStack(spacing: 8) {
@@ -27,6 +31,15 @@ struct CardGridView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 6) {
+                            if refreshing {
+                                ProgressView().scaleEffect(0.55).tint(Theme.accentSoft)
+                                Text("正在刷新…")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.accentSoft)
+                            }
+                        }
+                        .frame(height: 16)
                         Text("\(title)  ·  \(items.count) 部 · 下拉刷新")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(Theme.fg)
@@ -43,13 +56,14 @@ struct CardGridView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
-                .refreshable { await load() }
+                .refreshable { await refresh() }
             }
         }
         .task { if items.isEmpty { await load() } }
         .fullScreenCover(item: $pick) { c in DetailView(card: c) }
     }
 
+    // 首次加载：允许整页转圈
     private func load() async {
         loading = true
         err = ""
@@ -61,6 +75,36 @@ struct CardGridView: View {
                 err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 loading = false
             }
+        }
+    }
+
+    // 下拉刷新：保留列表，只显示顶部缓冲文字；提示至少 0.6 秒
+    private func refresh() async {
+        await MainActor.run { refreshing = true }
+        let started = Date()
+        do {
+            let list = try await loader()
+            await alwaysShowHint(started)
+            await MainActor.run {
+                items = list
+                err = ""
+                loading = false
+                refreshing = false
+            }
+        } catch {
+            await alwaysShowHint(started)
+            await MainActor.run {
+                err = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                loading = false
+                refreshing = false
+            }
+        }
+    }
+
+    private func alwaysShowHint(_ started: Date) async {
+        let left = 0.6 - Date().timeIntervalSince(started)
+        if left > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
         }
     }
 }
